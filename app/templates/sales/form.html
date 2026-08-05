@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - Cattle Manager{% endblock %}
+{% block content %}
+<h2>{{ title }}</h2>
+<form method="post" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="row">
+    <div class="col-md-6 mb-3">{{ form.animal_id.label(class="form-label") }} {{ form.animal_id(class="form-select") }}</div>
+    <div class="col-md-6 mb-3">
+      {{ form.buyer_id.label(class="form-label") }}
+      <div class="input-group">
+        {{ form.buyer_id(class="form-select") }}
+        <a class="btn btn-outline-secondary" href="{{ url_for('sales.new_buyer', next_sale=request.args.get('animal_id', '')) }}">+ New</a>
+      </div>
+    </div>
+    <div class="col-md-4 mb-3">{{ form.sale_price.label(class="form-label") }} {{ form.sale_price(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.sale_date.label(class="form-label") }} {{ form.sale_date(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.payment_method.label(class="form-label") }} {{ form.payment_method(class="form-control") }}</div>
+    <div class="col-12 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=3) }}</div>
+  </div>
+  {{ form.submit(class="btn btn-success") }}
+  <a href="{{ url_for('sales.list_sales') }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}

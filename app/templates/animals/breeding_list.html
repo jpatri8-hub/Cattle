@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Breeding Records - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Breeding Records</h2>
+  <a href="{{ url_for('animals.new_breeding') }}" class="btn btn-success">+ New Breeding Record</a>
+</div>
+<table class="table table-striped bg-white">
+  <thead><tr><th>Sire</th><th>Dam</th><th>Breeding Date</th><th>Expected Calving</th><th>Actual Calving</th><th>Offspring</th></tr></thead>
+  <tbody>
+    {% for r in records %}
+    <tr>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=r.sire_id) }}">{{ r.sire.tag_id }}</a></td>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=r.dam_id) }}">{{ r.dam.tag_id }}</a></td>
+      <td>{{ r.breeding_date }}</td>
+      <td>{{ r.expected_calving_date or "-" }}</td>
+      <td>{{ r.actual_calving_date or "-" }}</td>
+      <td>{% if r.offspring %}<a href="{{ url_for('animals.view_animal', animal_id=r.offspring_id) }}">{{ r.offspring.tag_id }}</a>{% else %}-{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-muted">No breeding records yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

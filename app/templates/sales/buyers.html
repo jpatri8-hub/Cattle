@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Buyers - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Buyers</h2>
+  <a href="{{ url_for('sales.new_buyer') }}" class="btn btn-success">+ New Buyer</a>
+</div>
+<table class="table table-striped bg-white">
+  <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+  <tbody>
+    {% for b in buyers %}
+    <tr>
+      <td>{{ b.name }}</td>
+      <td>{{ b.phone or "-" }}</td>
+      <td>{{ b.email or "-" }}</td>
+      <td><a href="{{ url_for('sales.edit_buyer', buyer_id=b.id) }}" class="btn btn-sm btn-outline-primary">Edit</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-muted">No buyers yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

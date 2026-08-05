@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ sale.invoice_number }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3 no-print">
+  <button class="btn btn-success" onclick="window.print()">Print</button>
+</div>
+<div class="card card-dashboard p-5">
+  <div class="d-flex justify-content-between mb-4">
+    <div>
+      <h2>🐄 Cattle Manager Ranch</h2>
+      <p class="text-muted mb-0">Bill of Sale / Invoice</p>
+    </div>
+    <div class="text-end">
+      <h4>{{ sale.invoice_number }}</h4>
+      <p class="mb-0">Date: {{ sale.sale_date }}</p>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <h6>Buyer</h6>
+      <p class="mb-0">{{ sale.buyer.name }}</p>
+      <p class="mb-0">{{ sale.buyer.address or "" }}</p>
+      <p class="mb-0">{{ sale.buyer.phone or "" }}</p>
+      <p class="mb-0">{{ sale.buyer.email or "" }}</p>
+    </div>
+  </div>
+
+  <table class="table table-bordered">
+    <thead>
+      <tr><th>Tag / ID</th><th>Sex</th><th>Breed</th><th>Registration #</th><th class="text-end">Price</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ sale.animal.tag_id }}</td>
+        <td>{{ sale.animal.sex }}</td>
+        <td>{{ sale.animal.breed or "-" }}</td>
+        <td>{{ sale.animal.registration_number or "-" }}</td>
+        <td class="text-end">${{ "%.2f"|format(sale.sale_price) }}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr><th colspan="4" class="text-end">Total</th><th class="text-end">${{ "%.2f"|format(sale.sale_price) }}</th></tr>
+    </tfoot>
+  </table>
+
+  <p><strong>Payment Method:</strong> {{ sale.payment_method or "-" }}</p>
+  {% if sale.notes %}<p><strong>Notes:</strong> {{ sale.notes }}</p>{% endif %}
+
+  <div class="row mt-5">
+    <div class="col-md-6">
+      <p>_______________________________</p>
+      <p>Seller Signature</p>
+    </div>
+    <div class="col-md-6">
+      <p>_______________________________</p>
+      <p>Buyer Signature</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

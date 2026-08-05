@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - Cattle Manager{% endblock %}
+{% block content %}
+<h2>{{ title }}</h2>
+<form method="post" enctype="multipart/form-data" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="row">
+    <div class="col-md-4 mb-3">{{ form.tag_id.label(class="form-label") }} {{ form.tag_id(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.sex.label(class="form-label") }} {{ form.sex(class="form-select") }}</div>
+
+    <div class="col-md-4 mb-3">{{ form.breed.label(class="form-label") }} {{ form.breed(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.color.label(class="form-label") }} {{ form.color(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.status.label(class="form-label") }} {{ form.status(class="form-select") }}</div>
+
+    <div class="col-md-4 mb-3">{{ form.birth_date.label(class="form-label") }} {{ form.birth_date(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.location.label(class="form-label") }} {{ form.location(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.registration_number.label(class="form-label") }} {{ form.registration_number(class="form-control") }}</div>
+
+    <div class="col-md-6 mb-3">{{ form.sire_id.label(class="form-label") }} {{ form.sire_id(class="form-select") }}</div>
+    <div class="col-md-6 mb-3">{{ form.dam_id.label(class="form-label") }} {{ form.dam_id(class="form-select") }}</div>
+
+    <div class="col-md-6 mb-3">{{ form.photo.label(class="form-label") }} {{ form.photo(class="form-control") }}</div>
+    <div class="col-md-6 mb-3">{{ form.registration_file.label(class="form-label") }} {{ form.registration_file(class="form-control") }}</div>
+
+    {% if current_user.is_owner %}
+    <div class="col-md-6 mb-3">{{ form.purchase_date.label(class="form-label") }} {{ form.purchase_date(class="form-control") }}</div>
+    <div class="col-md-6 mb-3">{{ form.purchase_price.label(class="form-label") }} {{ form.purchase_price(class="form-control") }}</div>
+    {% endif %}
+
+    <div class="col-12 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=3) }}</div>
+  </div>
+  {{ form.submit(class="btn btn-success") }}
+  <a href="{{ url_for('animals.list_animals') }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}
