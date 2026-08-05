@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Rental Calendar - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Bull Rental Calendar</h2>
+  <a href="{{ url_for('rentals.new_rental') }}" class="btn btn-success">+ Book Rental</a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('rentals.calendar_view', year=prev_month.year, month=prev_month.month) }}">&laquo; Prev</a>
+  <h4 class="mb-0">{{ month_name }}</h4>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('rentals.calendar_view', year=next_month.year, month=next_month.month) }}">Next &raquo;</a>
+</div>
+
+<table class="table table-bordered bg-white">
+  <thead>
+    <tr>
+      {% for wd in ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] %}<th class="text-center">{{ wd }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for week in month_days %}
+    <tr>
+      {% for day in week %}
+      <td class="calendar-day {{ 'bg-light' if day.month != current_month else '' }} {{ 'border-success border-2' if day == today else '' }}">
+        <div class="fw-bold">{{ day.day }}</div>
+        {% for r in day_rentals.get(day, []) %}
+        <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}" class="rental-chip {{ 'bg-warning text-dark' if r.status=='active' else 'bg-primary' }}" title="{{ r.bull.tag_id }} - {{ r.renter_name }}">
+          {{ r.bull.tag_id }}
+        </a>
+        {% endfor %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="card card-dashboard p-3 mt-4">
+  <h5>Open Rentals</h5>
+  <table class="table table-sm">
+    <thead><tr><th>Bull</th><th>Renter</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for r in open_rentals %}
+      <tr>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=r.bull_id) }}">{{ r.bull.tag_id }}</a></td>
+        <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.renter_name }}</a></td>
+        <td>{{ r.start_date }}</td>
+        <td>{{ r.end_date }}</td>
+        <td><span class="badge {{ 'bg-warning text-dark' if r.status=='active' else 'bg-primary' }}">{{ r.status }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-muted">No open rentals.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

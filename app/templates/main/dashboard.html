@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-4">Dashboard</h2>
+
+<div class="row mb-4">
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3 text-center">
+      <div class="text-muted">Herd Size</div>
+      <div class="display-6">{{ total_animals }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3 text-center">
+      <div class="text-muted">Available</div>
+      <div class="display-6 text-success">{{ available }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3 text-center">
+      <div class="text-muted">Currently Rented</div>
+      <div class="display-6 text-warning">{{ rented_out }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>Rentals Due Back (next 14 days)</h5>
+      {% if upcoming_returns %}
+      <ul class="list-group list-group-flush">
+        {% for r in upcoming_returns %}
+        <li class="list-group-item d-flex justify-content-between">
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.tag_id }} - {{ r.renter_name }}</a>
+          <span class="{{ 'text-danger fw-bold' if r.is_overdue else '' }}">{{ r.end_date }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="text-muted mb-0">None due back soon.</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>Upcoming Bookings (next 14 days)</h5>
+      {% if upcoming_bookings %}
+      <ul class="list-group list-group-flush">
+        {% for r in upcoming_bookings %}
+        <li class="list-group-item d-flex justify-content-between">
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.tag_id }} - {{ r.renter_name }}</a>
+          <span>{{ r.start_date }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="text-muted mb-0">Nothing booked soon.</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>Vaccinations / Follow-ups Due</h5>
+      {% if overdue_vaccines %}
+      <ul class="list-group list-group-flush">
+        {% for h in overdue_vaccines %}
+        <li class="list-group-item d-flex justify-content-between">
+          <a href="{{ url_for('animals.view_animal', animal_id=h.animal_id) }}">{{ h.animal.tag_id }} - {{ h.description }}</a>
+          <span class="{{ 'text-danger fw-bold' if h.next_due_date < today else '' }}">{{ h.next_due_date }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="text-muted mb-0">Nothing due soon.</p>{% endif %}
+    </div>
+  </div>
+
+  {% if current_user.is_owner %}
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>Recent Sales <span class="text-muted small">(YTD total: ${{ "%.2f"|format(sales_this_year_total) }})</span></h5>
+      {% if recent_sales %}
+      <ul class="list-group list-group-flush">
+        {% for s in recent_sales %}
+        <li class="list-group-item d-flex justify-content-between">
+          <a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.animal.tag_id }} → {{ s.buyer.name }}</a>
+          <span>${{ "%.2f"|format(s.sale_price) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="text-muted mb-0">No sales recorded yet.</p>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

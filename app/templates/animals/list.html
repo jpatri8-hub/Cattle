@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Herd - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Herd Inventory</h2>
+  <div>
+    <a href="{{ url_for('animals.list_breeding') }}" class="btn btn-outline-secondary">Breeding Records</a>
+    <a href="{{ url_for('animals.new_animal') }}" class="btn btn-success">+ Add Animal</a>
+  </div>
+</div>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <select name="status" class="form-select" onchange="this.form.submit()">
+      <option value="">All Statuses</option>
+      {% for s in ["available", "rented", "sold", "deceased"] %}
+      <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s.capitalize() }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="sex" class="form-select" onchange="this.form.submit()">
+      <option value="">All Sexes</option>
+      {% for s in ["Bull", "Cow", "Steer", "Heifer"] %}
+      <option value="{{ s }}" {% if sex_filter == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+<div class="row">
+  {% for a in animals %}
+  <div class="col-md-3 mb-4">
+    <div class="card card-dashboard h-100">
+      {% if a.photo_filename %}
+      <img src="{{ url_for('static', filename='uploads/' + a.photo_filename) }}" class="animal-photo">
+      {% else %}
+      <div class="animal-photo d-flex align-items-center justify-content-center text-muted">No Photo</div>
+      {% endif %}
+      <div class="card-body">
+        <h5 class="card-title">{{ a.tag_id }} <span class="badge status-badge-{{ a.status }}">{{ a.status }}</span></h5>
+        <p class="card-text mb-1">{{ a.sex }} &middot; {{ a.breed or "Unknown breed" }}</p>
+        <p class="card-text text-muted small">Age: {{ a.age_display }}</p>
+        <a href="{{ url_for('animals.view_animal', animal_id=a.id) }}" class="btn btn-sm btn-outline-success">View</a>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted">No animals found. <a href="{{ url_for('animals.new_animal') }}">Add your first animal</a>.</p>
+  {% endfor %}
+</div>
+{% endblock %}

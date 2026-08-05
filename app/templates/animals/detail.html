@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ animal.tag_id }} - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <h2>{{ animal.tag_id }} {% if animal.name %}<small class="text-muted">({{ animal.name }})</small>{% endif %}
+    <span class="badge status-badge-{{ animal.status }}">{{ animal.status }}</span>
+  </h2>
+  <div>
+    <a href="{{ url_for('animals.edit_animal', animal_id=animal.id) }}" class="btn btn-outline-primary">Edit</a>
+    {% if current_user.is_owner %}
+    {% if animal.status != "sold" %}
+    <a href="{{ url_for('sales.new_sale', animal_id=animal.id) }}" class="btn btn-outline-success">Sell</a>
+    {% endif %}
+    <form method="post" action="{{ url_for('animals.delete_animal', animal_id=animal.id) }}" class="d-inline" onsubmit="return confirm('Delete this animal? This cannot be undone.');">
+      <button class="btn btn-outline-danger">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-4 mb-4">
+    {% if animal.photo_filename %}
+    <img src="{{ url_for('static', filename='uploads/' + animal.photo_filename) }}" class="animal-photo mb-3" style="max-height:280px;">
+    {% endif %}
+    <div class="card card-dashboard p-3">
+      <h5>Details</h5>
+      <table class="table table-sm mb-0">
+        <tr><th>Sex</th><td>{{ animal.sex }}</td></tr>
+        <tr><th>Breed</th><td>{{ animal.breed or "-" }}</td></tr>
+        <tr><th>Color</th><td>{{ animal.color or "-" }}</td></tr>
+        <tr><th>Birth Date</th><td>{{ animal.birth_date or "-" }} ({{ animal.age_display }})</td></tr>
+        <tr><th>Location</th><td>{{ animal.location or "-" }}</td></tr>
+        <tr><th>Current Weight</th><td>{{ animal.current_weight or "-" }} lbs</td></tr>
+        <tr><th>Registration #</th><td>{{ animal.registration_number or "-" }}</td></tr>
+        {% if animal.registration_file %}
+        <tr><th>Papers</th><td><a href="{{ url_for('static', filename='uploads/' + animal.registration_file) }}" target="_blank">View File</a></td></tr>
+        {% endif %}
+        <tr><th>Sire</th><td>{% if animal.sire %}<a href="{{ url_for('animals.view_animal', animal_id=animal.sire.id) }}">{{ animal.sire.tag_id }}</a>{% else %}-{% endif %}</td></tr>
+        <tr><th>Dam</th><td>{% if animal.dam %}<a href="{{ url_for('animals.view_animal', animal_id=animal.dam.id) }}">{{ animal.dam.tag_id }}</a>{% else %}-{% endif %}</td></tr>
+        {% if current_user.is_owner %}
+        <tr><th>Purchase Date</th><td>{{ animal.purchase_date or "-" }}</td></tr>
+        <tr><th>Purchase Price</th><td>{{ "$%.2f"|format(animal.purchase_price) if animal.purchase_price else "-" }}</td></tr>
+        {% endif %}
+      </table>
+      {% if animal.notes %}<p class="mt-2 mb-0"><strong>Notes:</strong> {{ animal.notes }}</p>{% endif %}
+    </div>
+
+    {% if animal.is_bull %}
+    <div class="card card-dashboard p-3 mt-3">
+      <h5>Rental History</h5>
+      {% if animal.rentals %}
+      <ul class="list-group list-group-flush">
+        {% for r in animal.rentals %}
+        <li class="list-group-item">
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.renter_name }}</a>
+          <span class="badge bg-secondary">{{ r.status }}</span><br>
+          <small class="text-muted">{{ r.start_date }} → {{ r.end_date }}</small>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="text-muted mb-0">No rental history.</p>{% endif %}
+      <a href="{{ url_for('rentals.new_rental', bull_id=animal.id) }}" class="btn btn-sm btn-success mt-2">Book Rental</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-md-8">
+    <div class="card card-dashboard p-3 mb-4">
+      <h5>Weight History</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Date</th><th>Weight (lbs)</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for w in animal.weight_records %}
+          <tr><td>{{ w.date_recorded }}</td><td>{{ w.weight }}</td><td>{{ w.notes or "" }}</td></tr>
+          {% else %}
+          <tr><td colspan="3" class="text-muted">No weight records yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <form method="post" action="{{ url_for('animals.add_weight', animal_id=animal.id) }}" class="row g-2 align-items-end">
+        {{ weight_form.hidden_tag() }}
+        <div class="col-auto">{{ weight_form.date_recorded(class="form-control", value=today) }}</div>
+        <div class="col-auto">{{ weight_form.weight(class="form-control", placeholder="Weight") }}</div>
+        <div class="col-auto">{{ weight_form.notes(class="form-control", placeholder="Notes") }}</div>
+        <div class="col-auto">{{ weight_form.submit(class="btn btn-outline-success") }}</div>
+      </form>
+    </div>
+
+    <div class="card card-dashboard p-3">
+      <h5>Health Records</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Vet</th><th>Next Due</th></tr></thead>
+        <tbody>
+          {% for h in animal.health_records %}
+          <tr>
+            <td>{{ h.date_recorded }}</td>
+            <td><span class="badge bg-info text-dark">{{ h.record_type.replace('_',' ') }}</span></td>
+            <td>{{ h.description }}</td>
+            <td>{{ h.vet_name or "-" }}</td>
+            <td>{{ h.next_due_date or "-" }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-muted">No health records yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <form method="post" action="{{ url_for('animals.add_health', animal_id=animal.id) }}" class="row g-2 align-items-end">
+        {{ health_form.hidden_tag() }}
+        <div class="col-auto">{{ health_form.record_type(class="form-select") }}</div>
+        <div class="col-auto">{{ health_form.date_recorded(class="form-control", value=today) }}</div>
+        <div class="col-auto">{{ health_form.description(class="form-control", placeholder="Description") }}</div>
+        <div class="col-auto">{{ health_form.vet_name(class="form-control", placeholder="Vet") }}</div>
+        <div class="col-auto">{{ health_form.cost(class="form-control", placeholder="Cost") }}</div>
+        <div class="col-auto">{{ health_form.next_due_date(class="form-control") }}</div>
+        <div class="col-auto">{{ health_form.submit(class="btn btn-outline-success") }}</div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
