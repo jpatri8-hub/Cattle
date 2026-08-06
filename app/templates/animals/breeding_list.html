@@ -3,11 +3,12 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="mb-0">Breeding Groups</h2>
-  <a href="{{ url_for('animals.new_breeding_group') }}" class="btn btn-success">+ New Breeding Group</a>
+  <a href="{{ url_for('animals.new_breeding_group') }}" class="btn btn-success">+ New Manual Breeding Group</a>
 </div>
+<p class="text-muted">"Auto" groups are created and kept up to date automatically whenever a bull and a cow/heifer are in the same location - just move animals via the herd list and exposure tracks itself. Use a manual group to plan ahead or add notes before you actually move animals.</p>
 <div class="table-responsive">
 <table class="table table-sm bg-white">
-  <thead><tr><th>Location</th><th>Bulls In</th><th>Bulls Out</th><th>Bull(s)</th><th>Cows Exposed</th></tr></thead>
+  <thead><tr><th>Location</th><th>Bulls In</th><th>Bulls Out</th><th>Bull(s)</th><th>Females Exposed</th><th>Source</th></tr></thead>
   <tbody>
     {% for g in groups %}
     <tr>
@@ -16,9 +17,10 @@
       <td>{{ g.end_date or "-" }}</td>
       <td>{% for b in g.bulls %}{{ b.display_id }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
       <td>{{ g.exposures|length }}</td>
+      <td>{% if g.is_auto %}<span class="badge bg-info text-dark">Auto</span>{% else %}<span class="badge bg-secondary">Manual</span>{% endif %}</td>
     </tr>
     {% else %}
-    <tr><td colspan="5" class="text-muted">No breeding groups yet.</td></tr>
+    <tr><td colspan="6" class="text-muted">No breeding groups yet. Move a bull and a cow/heifer into the same location and one will appear here automatically.</td></tr>
     {% endfor %}
   </tbody>
 </table>

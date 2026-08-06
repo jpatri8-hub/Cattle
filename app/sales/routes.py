@@ -35,6 +35,10 @@ def new_sale():
         flash("Add a sale category before recording a sale.", "warning")
 
     sellable = Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all()
+    animals_by_type = {}
+    for a in sellable:
+        animals_by_type.setdefault(a.animal_type, []).append(a)
+    animals_by_type = dict(sorted(animals_by_type.items(), key=lambda kv: kv[0].name if kv[0] else ""))
 
     if request.method == "GET":
         form.sale_date.data = date.today()
@@ -55,24 +59,34 @@ def new_sale():
             if len(animals) != len(animal_ids):
                 flash("One or more selected animals are no longer available to sell.", "danger")
             else:
-                bad_rows = []
-                lines = []
+                selected_by_type = {}
                 for a in animals:
-                    price_raw = request.form.get(f"price_{a.id}", "").strip()
-                    weight_raw = request.form.get(f"weight_{a.id}", "").strip()
-                    if not price_raw:
-                        bad_rows.append(a.display_id)
-                        continue
-                    try:
-                        price = float(price_raw)
-                    except ValueError:
-                        bad_rows.append(a.display_id)
-                        continue
-                    weight = float(weight_raw) if weight_raw else None
-                    lines.append((a, price, weight))
+                    selected_by_type.setdefault(a.animal_type_id, []).append(a)
 
-                if bad_rows:
-                    flash(f"Enter a valid price for: {', '.join(bad_rows)}", "danger")
+                bad_types = []
+                lines = []
+                for type_id, type_animals in selected_by_type.items():
+                    type_name = type_animals[0].animal_type.name if type_animals[0].animal_type else f"type #{type_id}"
+                    total_price_raw = request.form.get(f"total_price_{type_id}", "").strip()
+                    total_weight_raw = request.form.get(f"total_weight_{type_id}", "").strip()
+                    count = len(type_animals)
+                    try:
+                        total_price = float(total_price_raw)
+                    except ValueError:
+                        bad_types.append(type_name)
+                        continue
+                    price_each = round(total_price / count, 2)
+                    weight_each = None
+                    if total_weight_raw:
+                        try:
+                            weight_each = round(float(total_weight_raw) / count, 2)
+                        except ValueError:
+                            weight_each = None
+                    for a in type_animals:
+                        lines.append((a, price_each, weight_each))
+
+                if bad_types:
+                    flash(f"Enter a total sale price for: {', '.join(bad_types)}", "danger")
                 else:
                     sale = Sale(
                         sale_category_id=form.sale_category_id.data,
@@ -91,10 +105,10 @@ def new_sale():
                         a.departure_date = form.sale_date.data
                     sale.invoice_number = f"INV-{sale.id:05d}"
                     db.session.commit()
-                    flash(f"Sale recorded with {len(lines)} animal(s).", "success")
+                    flash(f"Sale recorded with {len(lines)} animal(s) across {len(selected_by_type)} type(s).", "success")
                     return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
-    return render_template("sales/form.html", form=form, animals=sellable, preselected=preselected)
+    return render_template("sales/form.html", form=form, animals_by_type=animals_by_type, preselected=preselected)
 
 
 @sales_bp.route("/<int:sale_id>")
@@ -121,6 +135,14 @@ def list_buyers():
     return render_template("sales/buyers.html", buyers=buyers)
 
 
+@sales_bp.route("/buyers/<int:buyer_id>")
+@login_required
+@owner_required
+def view_buyer(buyer_id):
+    buyer = Buyer.query.get_or_404(buyer_id)
+    return render_template("sales/buyer_detail.html", buyer=buyer)
+
+
 @sales_bp.route("/buyers/new", methods=["GET", "POST"])
 @login_required
 @owner_required
@@ -137,6 +159,8 @@ def new_buyer():
         db.session.add(buyer)
         db.session.commit()
         flash(f"Buyer {buyer.name} added.", "success")
+        if request.args.get("next") == "rental":
+            return redirect(url_for("rentals.new_rental"))
         return redirect(url_for("sales.new_sale"))
 
     return render_template("sales/buyer_form.html", form=form, title="New Buyer")
@@ -156,5 +180,5 @@ def edit_buyer(buyer_id):
         buyer.notes = form.notes.data
         db.session.commit()
         flash(f"Buyer {buyer.name} updated.", "success")
-        return redirect(url_for("sales.list_buyers"))
+        return redirect(url_for("sales.view_buyer", buyer_id=buyer.id))
     return render_template("sales/buyer_form.html", form=form, title=f"Edit {buyer.name}")

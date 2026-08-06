@@ -2,7 +2,7 @@
 {% block title %}Record Sale - Cattle Manager{% endblock %}
 {% block content %}
 <h2>Record Sale</h2>
-<p class="text-muted">Works for a single animal or a bulk/truckload sale - check off every animal included and enter its price (and weight, for the per-type averages).</p>
+<p class="text-muted">Check off the animals included in this sale, then enter one <strong>total weight</strong> and <strong>total sale price</strong> per animal type - the app splits it evenly across the animals of that type you checked. Works the same way for a single animal (just check the one) or a full truckload.</p>
 <form method="post" class="card card-dashboard p-4" novalidate>
   {{ form.hidden_tag() }}
   <div class="row">
@@ -20,25 +20,34 @@
   </div>
 
   <h5 class="mt-2">Animals in this Sale</h5>
-  <div class="table-responsive">
-  <table class="table table-sm">
-    <thead><tr><th></th><th>ID</th><th>Type</th><th>Location</th><th>Price ($)</th><th>Weight (lbs)</th></tr></thead>
-    <tbody>
-      {% for a in animals %}
-      <tr>
-        <td><input type="checkbox" name="animal_ids" value="{{ a.id }}" {% if a.id in preselected %}checked{% endif %}></td>
-        <td>{{ a.display_id }}</td>
-        <td>{{ a.animal_type.name if a.animal_type else "-" }}</td>
-        <td>{{ a.location.display_name if a.location else "-" }}</td>
-        <td><input type="number" step="0.01" class="form-control form-control-sm" name="price_{{ a.id }}"></td>
-        <td><input type="number" step="0.01" class="form-control form-control-sm" name="weight_{{ a.id }}" value="{{ a.current_weight or '' }}"></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="text-muted">No animals currently on farm.</td></tr>
+  {% for atype, type_animals in animals_by_type.items() %}
+  <div class="card card-dashboard p-3 mb-3">
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-auto"><strong>{{ atype.name if atype else "Unknown type" }}</strong></div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Total Weight (lbs)</label>
+        <input type="number" step="0.01" class="form-control form-control-sm" name="total_weight_{{ atype.id if atype else 0 }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Total Sale Price ($)</label>
+        <input type="number" step="0.01" class="form-control form-control-sm" name="total_price_{{ atype.id if atype else 0 }}">
+      </div>
+      <div class="col-auto text-muted small">Split evenly across every animal of this type checked below.</div>
+    </div>
+    <div class="row row-cols-2 row-cols-md-4 g-1">
+      {% for a in type_animals %}
+      <div class="col">
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" name="animal_ids" value="{{ a.id }}" id="an{{ a.id }}" {% if a.id in preselected %}checked{% endif %}>
+          <label class="form-check-label" for="an{{ a.id }}">{{ a.display_id }} <small class="text-muted">({{ a.location.display_name if a.location else "-" }})</small></label>
+        </div>
+      </div>
       {% endfor %}
-    </tbody>
-  </table>
+    </div>
   </div>
+  {% else %}
+  <p class="text-muted">No animals currently on farm.</p>
+  {% endfor %}
 
   {{ form.submit(class="btn btn-success") }}
   <a href="{{ url_for('sales.list_sales') }}" class="btn btn-link">Cancel</a>

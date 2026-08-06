@@ -11,7 +11,10 @@ from app.forms import (
     ConfirmBredForm, DepartureForm, FeedoutForm, HealthRecordForm, ImportCSVForm,
     LastSeenCheckForm, SemenTestForm, WeightRecordForm, BullEPDForm,
 )
-from app.lifecycle import apply_candidate_sires, apply_weaning_transfer, generate_temp_id, inbreeding_warnings
+from app.lifecycle import (
+    apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
+    generate_temp_id, inbreeding_warnings,
+)
 from app.models import (
     Animal, AnimalType, BreedingGroup, BullEPD, CALF_OUTCOME_ACTIVE, CalfRecord,
     ExposureRecord, FeedoutRecord, HealthRecord, LastSeenCheck,
@@ -63,6 +66,7 @@ def list_animals():
     current_only = request.args.get("archived", "") != "1"
     has_calf = request.args.get("has_calf") == "1"
     flagged = request.args.get("flagged") == "1"
+    q = (request.args.get("q") or "").strip()
 
     query = Animal.query
     if current_only:
@@ -73,6 +77,11 @@ def list_animals():
         query = query.filter_by(animal_type_id=type_id)
     if location_id:
         query = query.filter_by(location_id=location_id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(Animal.tag_id.ilike(like), Animal.temp_id.ilike(like), Animal.name.ilike(like))
+        )
 
     animals = query.order_by(Animal.tag_id).all()
 
@@ -87,7 +96,7 @@ def list_animals():
     return render_template(
         "animals/list.html", animals=animals, types=types, locations=locations,
         type_id=type_id, location_id=location_id, current_only=current_only,
-        has_calf=has_calf, flagged=flagged,
+        has_calf=has_calf, flagged=flagged, q=q,
     )
 
 
@@ -373,6 +382,28 @@ def bulk_action():
             db.session.commit()
             flash(f"Logged vaccination for {len(animals)} animal(s).", "success")
 
+    elif action == "semen_test":
+        test_date = request.form.get("semen_test_date") or date.today().isoformat()
+        result = request.form.get("semen_test_result")
+        notes = request.form.get("semen_test_notes") or None
+        bulls = [a for a in animals if a.is_bull]
+        skipped = len(animals) - len(bulls)
+        if result not in dict((r, r) for r in ("Good", "Bad", "Retest")):
+            flash("Pick a semen test result to apply to the selected bulls.", "warning")
+        elif not bulls:
+            flash("None of the selected animals are bulls.", "warning")
+        else:
+            for b in bulls:
+                db.session.add(SemenTest(
+                    bull_id=b.id, test_date=date.fromisoformat(test_date), result=result,
+                    notes=notes, recorded_by_id=current_user.id,
+                ))
+            db.session.commit()
+            msg = f"Logged a semen test for {len(bulls)} bull(s)."
+            if skipped:
+                msg += f" Skipped {skipped} non-bull animal(s)."
+            flash(msg, "success")
+
     elif action == "sell":
         session["bulk_sale_ids"] = animal_ids
         return redirect(url_for("sales.new_sale"))
@@ -546,6 +577,7 @@ def update_calf_outcome(calf_record_id):
 @animals_bp.route("/breeding")
 @login_required
 def list_breeding_groups():
+    auto_sync_breeding_exposure()
     groups = BreedingGroup.query.order_by(BreedingGroup.start_date.desc()).all()
     return render_template("animals/breeding_list.html", groups=groups)
 
@@ -664,6 +696,57 @@ def record_castration(animal_id):
 def list_bulls():
     bulls = [a for a in Animal.query.filter_by(is_active=True, sex=SEX_MALE).order_by(Animal.tag_id).all() if a.is_bull]
     return render_template("animals/bulls_list.html", bulls=bulls)
+
+
+@animals_bp.route("/bulls/export")
+@login_required
+def export_bulls():
+    import csv
+    import io
+
+    from flask import Response
+
+    type_id = request.args.get("type_id", type=int)
+    location_id = request.args.get("location_id", type=int)
+    q = (request.args.get("q") or "").strip()
+
+    query = Animal.query.filter_by(is_active=True, sex=SEX_MALE)
+    if type_id:
+        query = query.filter_by(animal_type_id=type_id)
+    if location_id:
+        query = query.filter_by(location_id=location_id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(Animal.tag_id.ilike(like), Animal.temp_id.ilike(like), Animal.name.ilike(like))
+        )
+    bulls = [a for a in query.order_by(Animal.tag_id).all() if a.is_bull]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "ID", "Type", "Location", "Semen Test Result", "Semen Test Date",
+        "Availability", "Renter", "Rental Start", "Rental End", "Rental Status",
+    ])
+    for b in bulls:
+        test = b.latest_semen_test
+        rental = b.latest_rental
+        writer.writerow([
+            b.display_id,
+            b.animal_type.name if b.animal_type else "",
+            b.location.display_name if b.location else "",
+            test.result if test else "",
+            test.test_date.isoformat() if test else "",
+            "Available" if b.is_rentable_available else (b.rental_unavailable_reason or ""),
+            rental.customer.name if rental else "",
+            rental.start_date.isoformat() if rental else "",
+            rental.end_date.isoformat() if rental else "",
+            rental.status if rental else "",
+        ])
+
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=bulls_export.csv"
+    return response
 
 
 @animals_bp.route("/<int:animal_id>/epd", methods=["POST"])

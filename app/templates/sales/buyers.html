@@ -5,19 +5,24 @@
   <h2>Buyers</h2>
   <a href="{{ url_for('sales.new_buyer') }}" class="btn btn-success">+ New Buyer</a>
 </div>
+<p class="text-muted">Buyers are also used as rental customers - each one's page shows both purchase and rental history.</p>
+<div class="table-responsive">
 <table class="table table-striped bg-white">
-  <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Purchases</th><th>Rentals</th><th></th></tr></thead>
   <tbody>
     {% for b in buyers %}
     <tr>
-      <td>{{ b.name }}</td>
+      <td><a href="{{ url_for('sales.view_buyer', buyer_id=b.id) }}">{{ b.name }}</a></td>
       <td>{{ b.phone or "-" }}</td>
       <td>{{ b.email or "-" }}</td>
+      <td>{{ b.sales|length }}</td>
+      <td>{{ b.rentals|length }}</td>
       <td><a href="{{ url_for('sales.edit_buyer', buyer_id=b.id) }}" class="btn btn-sm btn-outline-primary">Edit</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="4" class="text-muted">No buyers yet.</td></tr>
+    <tr><td colspan="6" class="text-muted">No buyers yet.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

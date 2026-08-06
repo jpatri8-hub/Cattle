@@ -8,8 +8,8 @@ from datetime import date, timedelta
 
 from app import db
 from app.models import (
-    Animal, AnimalType, BreedingGroup, Rental,
-    RENTAL_ACTIVE, SEMEN_BAD, SEMEN_RETEST, SEX_MALE,
+    Animal, AnimalType, BreedingGroup, ExposureRecord, Location, Rental,
+    RENTAL_ACTIVE, SEMEN_BAD, SEMEN_RETEST, SEX_FEMALE, SEX_MALE,
     TRANSFER_TRIGGER_AGE, TRANSFER_TRIGGER_WEANED,
 )
 
@@ -110,6 +110,56 @@ def apply_weaning_transfer(calf_record):
     return True
 
 
+def auto_sync_breeding_exposure(commit=True):
+    """Automatically maintains one open BreedingGroup per location whenever an
+    active bull and an active cow/heifer currently share that location, and
+    creates ExposureRecords for the females present there. Closes the
+    auto-tracked group once no bull is left paired with a female. Manually
+    created (non-auto) groups are never touched by this."""
+    changes = []
+    for loc in Location.query.filter_by(is_active=True).all():
+        animals_here = Animal.query.filter_by(location_id=loc.id, is_active=True).all()
+        bulls_here = [a for a in animals_here if a.is_bull]
+        females_here = [
+            a for a in animals_here
+            if a.sex == SEX_FEMALE and a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
+        ]
+
+        group = BreedingGroup.query.filter_by(location_id=loc.id, end_date=None, is_auto=True).first()
+
+        if not bulls_here or not females_here:
+            if group:
+                group.end_date = date.today()
+                changes.append(f"Closed auto-tracked breeding group at {loc.name} (no bull+female pairing left)")
+            continue
+
+        if not group:
+            group = BreedingGroup(
+                location_id=loc.id, start_date=date.today(), is_auto=True,
+                notes="Auto-detected: bull(s) and female(s) currently in the same location.",
+            )
+            db.session.add(group)
+            db.session.flush()
+            changes.append(f"Started auto-tracked breeding group at {loc.name}")
+
+        current_bull_ids = {b.id for b in group.bulls}
+        new_bull_ids = {b.id for b in bulls_here}
+        if current_bull_ids != new_bull_ids:
+            group.bulls = bulls_here
+
+        existing_exposed_ids = {e.animal_id for e in group.exposures}
+        for f in females_here:
+            if f.id not in existing_exposed_ids:
+                db.session.add(ExposureRecord(breeding_group_id=group.id, animal_id=f.id))
+                changes.append(
+                    f"{f.display_id} now exposed to {', '.join(b.display_id for b in bulls_here)} at {loc.name}"
+                )
+
+    if commit:
+        db.session.commit()
+    return changes
+
+
 def not_seen_alerts():
     return sorted(
         (a for a in Animal.query.filter_by(is_active=True).all() if a.not_seen_flagged),
@@ -139,6 +189,7 @@ def rental_overdue_alerts():
 def run_lifecycle_checks():
     """Convenience entry point called from the dashboard on each load."""
     apply_age_transfers()
+    auto_sync_breeding_exposure()
     return {
         "not_seen": not_seen_alerts(),
         "semen": semen_test_alerts(),
