@@ -5,20 +5,25 @@
   <h2>Sales</h2>
   <a href="{{ url_for('sales.new_sale') }}" class="btn btn-success">+ Record Sale</a>
 </div>
+<div class="table-responsive">
 <table class="table table-striped bg-white">
-  <thead><tr><th>Invoice</th><th>Animal</th><th>Buyer</th><th>Date</th><th>Price</th></tr></thead>
+  <thead><tr><th>Invoice</th><th>Category</th><th>Buyer</th><th>Date</th><th># Animals</th><th>Total</th><th>Avg Price</th><th>Avg Weight</th></tr></thead>
   <tbody>
     {% for s in sales %}
     <tr>
       <td><a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.invoice_number }}</a></td>
-      <td><a href="{{ url_for('animals.view_animal', animal_id=s.animal_id) }}">{{ s.animal.tag_id }}</a></td>
+      <td>{{ s.category.name }}</td>
       <td>{{ s.buyer.name }}</td>
       <td>{{ s.sale_date }}</td>
-      <td>${{ "%.2f"|format(s.sale_price) }}</td>
+      <td>{{ s.lines|length }}</td>
+      <td>${{ "%.2f"|format(s.total_price) }}</td>
+      <td>${{ "%.2f"|format(s.average_price) }}</td>
+      <td>{{ "%.1f"|format(s.average_weight) if s.average_weight else "-" }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="5" class="text-muted">No sales recorded yet.</td></tr>
+    <tr><td colspan="8" class="text-muted">No sales recorded yet.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

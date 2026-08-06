@@ -2,17 +2,50 @@
 {% block title %}Sale {{ sale.invoice_number }} - Cattle Manager{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <h2>Sale {{ sale.invoice_number }}</h2>
+  <h2>Sale {{ sale.invoice_number }} <span class="badge bg-secondary">{{ sale.category.name }}</span></h2>
   <a href="{{ url_for('sales.invoice', sale_id=sale.id) }}" class="btn btn-outline-primary" target="_blank">View / Print Invoice</a>
 </div>
+<div class="row">
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <table class="table table-sm mb-0">
+        <tr><th>Buyer</th><td>{{ sale.buyer.name }} &middot; {{ sale.buyer.phone or "" }} {{ sale.buyer.email or "" }}</td></tr>
+        <tr><th>Sale Date</th><td>{{ sale.sale_date }}</td></tr>
+        <tr><th>Total Price</th><td>${{ "%.2f"|format(sale.total_price) }}</td></tr>
+        <tr><th>Payment Method</th><td>{{ sale.payment_method or "-" }}</td></tr>
+        <tr><th>Notes</th><td>{{ sale.notes or "-" }}</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>Averages by Sex {% if sale.lines|length > 1 %}<small class="text-muted">(bulk sale)</small>{% endif %}</h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Sex</th><th>Count</th><th>Avg Price</th><th>Avg Weight</th></tr></thead>
+        <tbody>
+          {% for sex, a in averages.items() %}
+          <tr><td>{{ sex.capitalize() }}</td><td>{{ a.count }}</td><td>{{ "$%.2f"|format(a.avg_price) if a.avg_price else "-" }}</td><td>{{ "%.1f"|format(a.avg_weight) if a.avg_weight else "-" }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div class="card card-dashboard p-3">
+  <h5>Animals</h5>
   <table class="table table-sm mb-0">
-    <tr><th>Animal</th><td><a href="{{ url_for('animals.view_animal', animal_id=sale.animal_id) }}">{{ sale.animal.tag_id }}</a> ({{ sale.animal.sex }}, {{ sale.animal.breed or "Unknown breed" }})</td></tr>
-    <tr><th>Buyer</th><td>{{ sale.buyer.name }} &middot; {{ sale.buyer.phone or "" }} {{ sale.buyer.email or "" }}</td></tr>
-    <tr><th>Sale Date</th><td>{{ sale.sale_date }}</td></tr>
-    <tr><th>Sale Price</th><td>${{ "%.2f"|format(sale.sale_price) }}</td></tr>
-    <tr><th>Payment Method</th><td>{{ sale.payment_method or "-" }}</td></tr>
-    <tr><th>Notes</th><td>{{ sale.notes or "-" }}</td></tr>
+    <thead><tr><th>ID</th><th>Type</th><th>Price</th><th>Weight</th></tr></thead>
+    <tbody>
+      {% for line in sale.lines %}
+      <tr>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=line.animal_id) }}">{{ line.animal.display_id }}</a></td>
+        <td>{{ line.animal.animal_type.name if line.animal.animal_type else "-" }}</td>
+        <td>${{ "%.2f"|format(line.price) }}</td>
+        <td>{{ line.weight or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
   </table>
 </div>
 {% endblock %}

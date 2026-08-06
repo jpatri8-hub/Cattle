@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - Cattle Manager{% endblock %}
+{% block content %}
+<h2>{{ title }}</h2>
+<form method="post" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
+  <div class="mb-3">{{ form.phone.label(class="form-label") }} {{ form.phone(class="form-control") }}</div>
+  <div class="mb-3">{{ form.email.label(class="form-label") }} {{ form.email(class="form-control") }}</div>
+  <div class="mb-3">{{ form.address.label(class="form-label") }} {{ form.address(class="form-control") }}</div>
+  <div class="mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=3) }}</div>
+  {{ form.submit(class="btn btn-success") }}
+  <a href="{{ url_for('rentals.list_customers') }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}

@@ -5,17 +5,19 @@
 <form method="post" enctype="multipart/form-data" class="card card-dashboard p-4" novalidate>
   {{ form.hidden_tag() }}
   <div class="row">
-    <div class="col-md-4 mb-3">{{ form.tag_id.label(class="form-label") }} {{ form.tag_id(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.tag_id.label(class="form-label") }} {{ form.tag_id(class="form-control", placeholder="Leave blank for a temp ID") }}</div>
     <div class="col-md-4 mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.sex.label(class="form-label") }} {{ form.sex(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">{{ form.animal_type_id.label(class="form-label") }} {{ form.animal_type_id(class="form-select") }}</div>
 
     <div class="col-md-4 mb-3">{{ form.breed.label(class="form-label") }} {{ form.breed(class="form-control") }}</div>
     <div class="col-md-4 mb-3">{{ form.color.label(class="form-label") }} {{ form.color(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.status.label(class="form-label") }} {{ form.status(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">{{ form.location_id.label(class="form-label") }} {{ form.location_id(class="form-select") }}</div>
 
     <div class="col-md-4 mb-3">{{ form.birth_date.label(class="form-label") }} {{ form.birth_date(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.location.label(class="form-label") }} {{ form.location(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.registration_number.label(class="form-label") }} {{ form.registration_number(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.birth_weight.label(class="form-label") }} {{ form.birth_weight(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.birth_location_id.label(class="form-label") }} {{ form.birth_location_id(class="form-select") }}</div>
+
+    <div class="col-md-6 mb-3">{{ form.registration_number.label(class="form-label") }} {{ form.registration_number(class="form-control") }}</div>
 
     <div class="col-md-6 mb-3">{{ form.sire_id.label(class="form-label") }} {{ form.sire_id(class="form-select") }}</div>
     <div class="col-md-6 mb-3">{{ form.dam_id.label(class="form-label") }} {{ form.dam_id(class="form-select") }}</div>

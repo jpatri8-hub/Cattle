@@ -9,10 +9,10 @@
     <div class="col-md-3 mb-3">{{ form.start_date.label(class="form-label") }} {{ form.start_date(class="form-control") }}</div>
     <div class="col-md-3 mb-3">{{ form.end_date.label(class="form-label") }} {{ form.end_date(class="form-control") }}</div>
 
-    <div class="col-md-4 mb-3">{{ form.renter_name.label(class="form-label") }} {{ form.renter_name(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.renter_phone.label(class="form-label") }} {{ form.renter_phone(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.renter_email.label(class="form-label") }} {{ form.renter_email(class="form-control") }}</div>
-    <div class="col-md-12 mb-3">{{ form.renter_address.label(class="form-label") }} {{ form.renter_address(class="form-control") }}</div>
+    <div class="col-md-8 mb-3">{{ form.customer_id.label(class="form-label") }} {{ form.customer_id(class="form-select") }}</div>
+    <div class="col-md-4 mb-3 d-flex align-items-end">
+      <a href="{{ url_for('rentals.new_customer', next_rental=1) }}" class="btn btn-outline-secondary w-100">+ New Customer</a>
+    </div>
 
     <div class="col-md-4 mb-3">{{ form.rate_type.label(class="form-label") }} {{ form.rate_type(class="form-select") }}</div>
     <div class="col-md-4 mb-3">{{ form.rate.label(class="form-label") }} {{ form.rate(class="form-control") }}</div>
