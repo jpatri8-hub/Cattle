@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }} - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <h2>{{ customer.name }}</h2>
+  <a href="{{ url_for('rentals.edit_customer', customer_id=customer.id) }}" class="btn btn-outline-primary">Edit</a>
+</div>
+<div class="row">
+  <div class="col-md-4 mb-4">
+    <div class="card card-dashboard p-3">
+      <table class="table table-sm mb-0">
+        <tr><th>Phone</th><td>{{ customer.phone or "-" }}</td></tr>
+        <tr><th>Email</th><td>{{ customer.email or "-" }}</td></tr>
+        <tr><th>Address</th><td>{{ customer.address or "-" }}</td></tr>
+      </table>
+      {% if customer.notes %}<p class="mt-2 mb-0"><strong>Notes:</strong> {{ customer.notes }}</p>{% endif %}
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card card-dashboard p-3">
+      <h5>Rental History &amp; Condition Scores</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Bull</th><th>Start</th><th>End</th><th>Status</th><th>Return Condition</th></tr></thead>
+        <tbody>
+          {% for r in customer.rentals %}
+          <tr>
+            <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }}</a></td>
+            <td>{{ r.start_date }}</td>
+            <td>{{ r.end_date }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ r.return_condition_score or "-" }}</td>
+          </tr>
+          {% else %}<tr><td colspan="5" class="text-muted">No rentals yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -2,9 +2,10 @@
 {% block title %}Rental #{{ rental.id }} - Cattle Manager{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <h2>Rental: {{ rental.bull.tag_id }} &rarr; {{ rental.renter_name }}
+  <h2>Rental: {{ rental.bull.display_id }} &rarr; <a href="{{ url_for('rentals.view_customer', customer_id=rental.customer_id) }}">{{ rental.customer.name }}</a>
     <span class="badge {{ 'bg-warning text-dark' if rental.status=='active' else 'bg-secondary' }}">{{ rental.status }}</span>
     {% if rental.is_overdue %}<span class="badge bg-danger">Overdue</span>{% endif %}
+    {% if rental.return_condition_score %}<span class="badge bg-info text-dark">Returned: {{ rental.return_condition_score }}</span>{% endif %}
   </h2>
 </div>
 
@@ -13,11 +14,10 @@
     <div class="card card-dashboard p-3">
       <h5>Rental Details</h5>
       <table class="table table-sm mb-0">
-        <tr><th>Bull</th><td><a href="{{ url_for('animals.view_animal', animal_id=rental.bull_id) }}">{{ rental.bull.tag_id }}</a></td></tr>
-        <tr><th>Renter</th><td>{{ rental.renter_name }}</td></tr>
-        <tr><th>Phone</th><td>{{ rental.renter_phone or "-" }}</td></tr>
-        <tr><th>Email</th><td>{{ rental.renter_email or "-" }}</td></tr>
-        <tr><th>Address</th><td>{{ rental.renter_address or "-" }}</td></tr>
+        <tr><th>Bull</th><td><a href="{{ url_for('animals.view_animal', animal_id=rental.bull_id) }}">{{ rental.bull.display_id }}</a></td></tr>
+        <tr><th>Customer</th><td><a href="{{ url_for('rentals.view_customer', customer_id=rental.customer_id) }}">{{ rental.customer.name }}</a></td></tr>
+        <tr><th>Phone</th><td>{{ rental.customer.phone or "-" }}</td></tr>
+        <tr><th>Email</th><td>{{ rental.customer.email or "-" }}</td></tr>
         <tr><th>Start</th><td>{{ rental.start_date }}</td></tr>
         <tr><th>End (planned)</th><td>{{ rental.end_date }}</td></tr>
         <tr><th>Actual Return</th><td>{{ rental.actual_return_date or "-" }}</td></tr>
@@ -45,18 +45,19 @@
     <div class="card card-dashboard p-3">
       <h5>Pickup / Return Checks</h5>
       <table class="table table-sm">
-        <thead><tr><th>Date</th><th>Type</th><th>Weight</th><th>Condition</th><th>Health</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Weight</th><th>Condition Score</th><th>Notes</th><th>Health</th></tr></thead>
         <tbody>
           {% for c in rental.checks %}
           <tr>
             <td>{{ c.date_recorded }}</td>
             <td><span class="badge bg-info text-dark">{{ c.check_type }}</span></td>
             <td>{{ c.weight or "-" }}</td>
+            <td>{{ c.condition_score or "-" }}</td>
             <td>{{ c.condition_notes or "-" }}</td>
             <td>{{ c.health_notes or "-" }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="5" class="text-muted">No checks logged yet.</td></tr>
+          <tr><td colspan="6" class="text-muted">No checks logged yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -65,11 +66,12 @@
         <div class="col-auto">{{ check_form.check_type.label(class="form-label") }} {{ check_form.check_type(class="form-select") }}</div>
         <div class="col-auto">{{ check_form.date_recorded.label(class="form-label") }} {{ check_form.date_recorded(class="form-control") }}</div>
         <div class="col-auto">{{ check_form.weight.label(class="form-label") }} {{ check_form.weight(class="form-control") }}</div>
+        <div class="col-auto">{{ check_form.condition_score.label(class="form-label") }} {{ check_form.condition_score(class="form-select") }}</div>
         <div class="col-md-3">{{ check_form.condition_notes.label(class="form-label") }} {{ check_form.condition_notes(class="form-control") }}</div>
         <div class="col-md-3">{{ check_form.health_notes.label(class="form-label") }} {{ check_form.health_notes(class="form-control") }}</div>
         <div class="col-auto">{{ check_form.submit(class="btn btn-outline-success") }}</div>
       </form>
-      <p class="text-muted small mt-2 mb-0">Logging a "pickup" check moves the rental to Active and the bull's status to Rented. Logging a "return" check moves the rental to Returned and the bull back to Available.</p>
+      <p class="text-muted small mt-2 mb-0">Logging a "pickup" check moves the rental to Active. Logging a "return" check moves the rental to Returned and records the condition score - the bull stays unavailable for 15 days after.</p>
     </div>
   </div>
 </div>

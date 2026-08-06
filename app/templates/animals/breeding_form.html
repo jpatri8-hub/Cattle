@@ -5,15 +5,17 @@
 <form method="post" class="card card-dashboard p-4" novalidate>
   {{ form.hidden_tag() }}
   <div class="row">
-    <div class="col-md-6 mb-3">{{ form.sire_id.label(class="form-label") }} {{ form.sire_id(class="form-select") }}</div>
-    <div class="col-md-6 mb-3">{{ form.dam_id.label(class="form-label") }} {{ form.dam_id(class="form-select") }}</div>
-    <div class="col-md-4 mb-3">{{ form.breeding_date.label(class="form-label") }} {{ form.breeding_date(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.expected_calving_date.label(class="form-label") }} {{ form.expected_calving_date(class="form-control") }}</div>
-    <div class="col-md-4 mb-3">{{ form.actual_calving_date.label(class="form-label") }} {{ form.actual_calving_date(class="form-control") }}</div>
-    <div class="col-md-6 mb-3">{{ form.offspring_id.label(class="form-label") }} {{ form.offspring_id(class="form-select") }}</div>
-    <div class="col-12 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=3) }}</div>
+    <div class="col-md-4 mb-3">{{ form.location_id.label(class="form-label") }} {{ form.location_id(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">{{ form.start_date.label(class="form-label") }} {{ form.start_date(class="form-control") }}</div>
+    <div class="col-md-4 mb-3">{{ form.end_date.label(class="form-label") }} {{ form.end_date(class="form-control") }}</div>
+    <div class="col-md-6 mb-3">
+      {{ form.bull_ids.label(class="form-label") }}
+      {{ form.bull_ids(class="form-select", size=6) }}
+      <small class="text-muted">Ctrl/Cmd-click to select multiple bulls (it's common to run more than one).</small>
+    </div>
+    <div class="col-md-6 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=6) }}</div>
   </div>
   {{ form.submit(class="btn btn-success") }}
-  <a href="{{ url_for('animals.list_breeding') }}" class="btn btn-link">Cancel</a>
+  <a href="{{ url_for('animals.list_breeding_groups') }}" class="btn btn-link">Cancel</a>
 </form>
 {% endblock %}

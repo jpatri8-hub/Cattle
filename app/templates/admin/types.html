@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Animal Types - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-3">Animal Types</h2>
+<div class="row">
+  <div class="col-md-8">
+    <table class="table table-sm bg-white">
+      <thead><tr><th>Name</th><th>Sex</th><th>Auto Transfer</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+        {% for t in types %}
+        <tr>
+          <td>{{ t.name }}</td>
+          <td>{{ t.sex.capitalize() }}</td>
+          <td>
+            {% if t.auto_transfer_trigger == 'age_months' %}
+              At {{ t.auto_transfer_age_months }} months &rarr; {{ t.auto_transfer_to.name if t.auto_transfer_to else "?" }}
+            {% elif t.auto_transfer_trigger == 'first_calf_weaned' %}
+              On first calf weaned &rarr; {{ t.auto_transfer_to.name if t.auto_transfer_to else "?" }}
+            {% else %}
+              <span class="text-muted">None</span>
+            {% endif %}
+          </td>
+          <td>{{ "Yes" if t.is_active else "No" }}</td>
+          <td class="text-end"><a href="{{ url_for('admin.edit_type', type_id=t.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">No types yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3">
+      <h5>Add Type</h5>
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
+        <div class="mb-3">{{ form.sex.label(class="form-label") }} {{ form.sex(class="form-select") }}</div>
+        <div class="mb-3">{{ form.auto_transfer_trigger.label(class="form-label") }} {{ form.auto_transfer_trigger(class="form-select") }}</div>
+        <div class="mb-3">{{ form.auto_transfer_age_months.label(class="form-label") }} {{ form.auto_transfer_age_months(class="form-control") }}</div>
+        <div class="mb-3">{{ form.auto_transfer_to_type_id.label(class="form-label") }} {{ form.auto_transfer_to_type_id(class="form-select") }}</div>
+        <div class="form-check mb-3">{{ form.is_active(class="form-check-input") }} {{ form.is_active.label(class="form-check-label") }}</div>
+        {{ form.submit(class="btn btn-success") }}
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

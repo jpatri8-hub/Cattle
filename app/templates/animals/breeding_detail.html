@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Breeding Group - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-1">{{ group.location.name }} <small class="text-muted">{{ group.start_date }} &rarr; {{ group.end_date or "present" }}</small></h2>
+<p>Bull(s): {% for b in group.bulls %}<a href="{{ url_for('animals.view_animal', animal_id=b.id) }}">{{ b.display_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% if group.notes %}<p class="text-muted">{{ group.notes }}</p>{% endif %}
+
+<div class="card card-dashboard p-3 mb-4">
+  <h5>Cows / Heifers Exposed</h5>
+  <table class="table table-sm">
+    <thead><tr><th>Animal</th><th>Confirmed Bred</th><th>Warnings</th><th>Update</th></tr></thead>
+    <tbody>
+      {% for e in group.exposures %}
+      <tr>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=e.animal_id) }}">{{ e.animal.display_id }}</a></td>
+        <td>{% if e.confirmed_bred is none %}Pending{% elif e.confirmed_bred %}<span class="badge bg-success">Yes</span> {{ e.confirmed_bred_date or "" }}{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+        <td>
+          {% if warnings_by_cow.get(e.id) %}
+          <span class="badge bg-danger">Inbreeding risk</span>
+          <ul class="mb-0 small text-danger">{% for w in warnings_by_cow[e.id] %}<li>{{ w }}</li>{% endfor %}</ul>
+          {% else %}<span class="text-muted">None detected</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('animals.confirm_bred', exposure_id=e.id) }}" class="d-flex gap-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="confirmed_bred" class="form-select form-select-sm">
+              <option value="">Pending</option>
+              <option value="yes" {% if e.confirmed_bred %}selected{% endif %}>Yes</option>
+              <option value="no" {% if e.confirmed_bred == false and e.confirmed_bred is not none %}selected{% endif %}>No</option>
+            </select>
+            <input type="date" name="confirmed_bred_date" class="form-control form-control-sm" value="{{ e.confirmed_bred_date or '' }}">
+            <button class="btn btn-sm btn-outline-success">Save</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="text-muted">No cows exposed yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="{{ url_for('animals.add_cows_to_group', group_id=group.id) }}" class="row g-2 align-items-end mt-2">
+    {{ add_form.hidden_tag() }}
+    <div class="col-auto">
+      {{ add_form.animal_ids.label(class="form-label") }}
+      {{ add_form.animal_ids(class="form-select", size=6) }}
+    </div>
+    <div class="col-auto">{{ add_form.submit(class="btn btn-success") }}</div>
+  </form>
+</div>
+{% endblock %}

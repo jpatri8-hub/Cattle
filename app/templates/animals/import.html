@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Import Animals - Cattle Manager{% endblock %}
+{% block content %}
+<h2>Import Animals from CSV</h2>
+<p class="text-muted">
+  Columns: <code>tag_id</code>, <code>animal_type</code> (must match an existing type name exactly),
+  <code>name</code>, <code>breed</code>, <code>birth_date</code> (YYYY-MM-DD), <code>color</code>,
+  <code>location</code> (must match an existing location name), <code>registration_number</code>, <code>notes</code>.
+  Set up your <a href="{{ url_for('admin.types') }}">animal types</a> and <a href="{{ url_for('admin.locations') }}">locations</a> first so rows match.
+</p>
+<form method="post" enctype="multipart/form-data" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="mb-3">{{ form.csv_file.label(class="form-label") }} {{ form.csv_file(class="form-control") }}</div>
+  {{ form.submit(class="btn btn-success") }}
+</form>
+
+{% if imported or errors %}
+<div class="card card-dashboard p-3 mt-3">
+  <p>Imported {{ imported }} animal(s).</p>
+  {% if errors %}
+  <ul class="text-danger">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

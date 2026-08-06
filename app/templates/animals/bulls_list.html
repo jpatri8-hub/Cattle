@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Bulls - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-3">Bulls</h2>
+<div class="table-responsive">
+<table class="table table-sm bg-white align-middle">
+  <thead><tr><th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>CED</th><th>BW EPD</th><th>Latest Semen Test</th><th>Availability</th></tr></thead>
+  <tbody>
+    {% for b in bulls %}
+    <tr>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=b.id) }}">{{ b.display_id }}</a></td>
+      <td>{{ b.animal_type.name if b.animal_type else "-" }}</td>
+      <td>{{ b.age_display }}</td>
+      <td>{{ b.location.display_name if b.location else "-" }}</td>
+      <td>{{ b.epd.ced if b.epd else "-" }}</td>
+      <td>{{ b.epd.birth_weight_epd if b.epd else "-" }}</td>
+      <td>{% if b.latest_semen_test %}{{ b.latest_semen_test.result }} ({{ b.latest_semen_test.test_date }}){% else %}Not tested{% endif %}</td>
+      <td>{% if b.is_rentable_available %}<span class="badge bg-success">Available</span>{% else %}<span class="badge bg-warning text-dark">{{ b.rental_unavailable_reason }}</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="text-muted">No bulls on farm.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

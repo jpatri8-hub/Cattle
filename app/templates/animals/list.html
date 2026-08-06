@@ -1,52 +1,94 @@
 {% extends "base.html" %}
 {% block title %}Herd - Cattle Manager{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>Herd Inventory</h2>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2 class="mb-0">Herd Inventory</h2>
   <div>
-    <a href="{{ url_for('animals.list_breeding') }}" class="btn btn-outline-secondary">Breeding Records</a>
-    <a href="{{ url_for('animals.new_animal') }}" class="btn btn-success">+ Add Animal</a>
+    <a href="{{ url_for('animals.list_cows') }}" class="btn btn-outline-secondary btn-sm">Cows/Heifers</a>
+    <a href="{{ url_for('animals.list_bulls') }}" class="btn btn-outline-secondary btn-sm">Bulls</a>
+    <a href="{{ url_for('animals.list_feedlot') }}" class="btn btn-outline-secondary btn-sm">Feedlot</a>
+    <a href="{{ url_for('animals.list_breeding_groups') }}" class="btn btn-outline-secondary btn-sm">Breeding Groups</a>
+    <a href="{{ url_for('animals.new_animal') }}" class="btn btn-success btn-sm">+ Add Animal</a>
   </div>
 </div>
 
 <form class="row g-2 mb-3" method="get">
   <div class="col-auto">
-    <select name="status" class="form-select" onchange="this.form.submit()">
-      <option value="">All Statuses</option>
-      {% for s in ["available", "rented", "sold", "deceased"] %}
-      <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s.capitalize() }}</option>
+    <select name="type_id" class="form-select" onchange="this.form.submit()">
+      <option value="">All Types</option>
+      {% for t in types %}
+      <option value="{{ t.id }}" {% if type_id == t.id %}selected{% endif %}>{{ t.name }}</option>
       {% endfor %}
     </select>
   </div>
   <div class="col-auto">
-    <select name="sex" class="form-select" onchange="this.form.submit()">
-      <option value="">All Sexes</option>
-      {% for s in ["Bull", "Cow", "Steer", "Heifer"] %}
-      <option value="{{ s }}" {% if sex_filter == s %}selected{% endif %}>{{ s }}</option>
+    <select name="location_id" class="form-select" onchange="this.form.submit()">
+      <option value="">All Locations</option>
+      {% for l in locations %}
+      <option value="{{ l.id }}" {% if location_id == l.id %}selected{% endif %}>{{ l.display_name }}</option>
       {% endfor %}
     </select>
   </div>
+  <div class="col-auto">
+    <select name="archived" class="form-select" onchange="this.form.submit()">
+      <option value="0" {% if current_only %}selected{% endif %}>Currently on Farm</option>
+      <option value="1" {% if not current_only %}selected{% endif %}>Archived (Off Farm)</option>
+    </select>
+  </div>
+  <div class="col-auto form-check pt-2">
+    <input type="checkbox" class="form-check-input" name="has_calf" value="1" id="hasCalf" {% if has_calf %}checked{% endif %} onchange="this.form.submit()">
+    <label class="form-check-label" for="hasCalf">Has calf at side</label>
+  </div>
+  <div class="col-auto form-check pt-2">
+    <input type="checkbox" class="form-check-input" name="flagged" value="1" id="flagged" {% if flagged %}checked{% endif %} onchange="this.form.submit()">
+    <label class="form-check-label" for="flagged">Not seen 4+ months</label>
+  </div>
 </form>
 
-<div class="row">
-  {% for a in animals %}
-  <div class="col-md-3 mb-4">
-    <div class="card card-dashboard h-100">
-      {% if a.photo_filename %}
-      <img src="{{ url_for('static', filename='uploads/' + a.photo_filename) }}" class="animal-photo">
-      {% else %}
-      <div class="animal-photo d-flex align-items-center justify-content-center text-muted">No Photo</div>
-      {% endif %}
-      <div class="card-body">
-        <h5 class="card-title">{{ a.tag_id }} <span class="badge status-badge-{{ a.status }}">{{ a.status }}</span></h5>
-        <p class="card-text mb-1">{{ a.sex }} &middot; {{ a.breed or "Unknown breed" }}</p>
-        <p class="card-text text-muted small">Age: {{ a.age_display }}</p>
-        <a href="{{ url_for('animals.view_animal', animal_id=a.id) }}" class="btn btn-sm btn-outline-success">View</a>
+<form method="post" action="{{ url_for('animals.bulk_action') }}" id="bulkForm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card card-dashboard p-2 mb-3 no-print">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto fw-semibold">Bulk actions on selected:</div>
+      <div class="col-auto">
+        <select name="location_id" class="form-select form-select-sm">
+          <option value="">Move to location...</option>
+          {% for l in locations %}<option value="{{ l.id }}">{{ l.display_name }}</option>{% endfor %}
+        </select>
       </div>
+      <div class="col-auto"><button type="submit" name="action" value="move" class="btn btn-sm btn-outline-primary">Move</button></div>
+      <div class="col-auto"><input type="text" name="description" class="form-control form-control-sm" placeholder="Vaccine / description" style="width:180px;"></div>
+      <div class="col-auto"><input type="date" name="date_recorded" class="form-control form-control-sm" value="{{ today }}"></div>
+      <div class="col-auto"><button type="submit" name="action" value="vaccinate" class="btn btn-sm btn-outline-info">Vaccinate</button></div>
+      <div class="col-auto ms-auto"><button type="submit" name="action" value="sell" class="btn btn-sm btn-success">Sell Selected</button></div>
     </div>
   </div>
-  {% else %}
-  <p class="text-muted">No animals found. <a href="{{ url_for('animals.new_animal') }}">Add your first animal</a>.</p>
-  {% endfor %}
-</div>
+
+  <div class="table-responsive">
+  <table class="table table-sm bg-white align-middle">
+    <thead>
+      <tr>
+        <th><input type="checkbox" onclick="document.querySelectorAll('.animal-check').forEach(c=>c.checked=this.checked)"></th>
+        <th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>Last Seen</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in animals %}
+      <tr class="{{ 'table-warning' if a.not_seen_flagged }}">
+        <td><input type="checkbox" class="animal-check" name="animal_ids" value="{{ a.id }}" form="bulkForm"></td>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}</td>
+        <td>{{ a.animal_type.name if a.animal_type else "-" }}</td>
+        <td>{{ a.age_display }}</td>
+        <td>{{ a.location.display_name if a.location else "-" }}</td>
+        <td>{{ a.last_seen_date or "Never" }}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}" class="btn btn-sm btn-outline-success">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-muted">No animals found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</form>
 {% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Edit Type - Cattle Manager{% endblock %}
+{% block content %}
+<h2>Edit {{ animal_type.name }}</h2>
+<form method="post" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
+  <div class="mb-3">{{ form.sex.label(class="form-label") }} {{ form.sex(class="form-select") }}</div>
+  <div class="mb-3">{{ form.auto_transfer_trigger.label(class="form-label") }} {{ form.auto_transfer_trigger(class="form-select") }}</div>
+  <div class="mb-3">{{ form.auto_transfer_age_months.label(class="form-label") }} {{ form.auto_transfer_age_months(class="form-control") }}</div>
+  <div class="mb-3">{{ form.auto_transfer_to_type_id.label(class="form-label") }} {{ form.auto_transfer_to_type_id(class="form-select") }}</div>
+  <div class="form-check mb-3">{{ form.is_active(class="form-check-input") }} {{ form.is_active.label(class="form-check-label") }}</div>
+  {{ form.submit(class="btn btn-success") }}
+  <a href="{{ url_for('admin.types') }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}
