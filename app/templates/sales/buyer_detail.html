@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ buyer.name }} - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <h2>{{ buyer.name }}</h2>
+  <a href="{{ url_for('sales.edit_buyer', buyer_id=buyer.id) }}" class="btn btn-outline-primary">Edit</a>
+</div>
+<div class="row">
+  <div class="col-md-4 mb-4">
+    <div class="card card-dashboard p-3">
+      <table class="table table-sm mb-0">
+        <tr><th>Phone</th><td>{{ buyer.phone or "-" }}</td></tr>
+        <tr><th>Email</th><td>{{ buyer.email or "-" }}</td></tr>
+        <tr><th>Address</th><td>{{ buyer.address or "-" }}</td></tr>
+      </table>
+      {% if buyer.notes %}<p class="mt-2 mb-0"><strong>Notes:</strong> {{ buyer.notes }}</p>{% endif %}
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card card-dashboard p-3 mb-4">
+      <h5>Purchase History <span class="text-muted small">({{ buyer.sales|length }})</span></h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Invoice</th><th>Date</th><th># Animals</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for s in buyer.sales|sort(attribute="sale_date", reverse=True) %}
+          <tr>
+            <td><a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.invoice_number }}</a></td>
+            <td>{{ s.sale_date }}</td>
+            <td>{{ s.lines|length }}</td>
+            <td>${{ "%.2f"|format(s.total_price) }}</td>
+          </tr>
+          {% else %}<tr><td colspan="4" class="text-muted">No purchases yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card card-dashboard p-3">
+      <h5>Rental History &amp; Condition Scores <span class="text-muted small">({{ buyer.rentals|length }})</span></h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Bull</th><th>Start</th><th>End</th><th>Status</th><th>Return Condition</th></tr></thead>
+        <tbody>
+          {% for r in buyer.rentals %}
+          <tr>
+            <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }}</a></td>
+            <td>{{ r.start_date }}</td>
+            <td>{{ r.end_date }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ r.return_condition_score or "-" }}</td>
+          </tr>
+          {% else %}<tr><td colspan="5" class="text-muted">No rentals yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

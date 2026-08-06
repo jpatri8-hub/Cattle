@@ -10,9 +10,11 @@
     <div class="col-md-3 mb-3">{{ form.end_date.label(class="form-label") }} {{ form.end_date(class="form-control") }}</div>
 
     <div class="col-md-8 mb-3">{{ form.customer_id.label(class="form-label") }} {{ form.customer_id(class="form-select") }}</div>
+    {% if current_user.is_owner %}
     <div class="col-md-4 mb-3 d-flex align-items-end">
-      <a href="{{ url_for('rentals.new_customer', next_rental=1) }}" class="btn btn-outline-secondary w-100">+ New Customer</a>
+      <a href="{{ url_for('sales.new_buyer', next='rental') }}" class="btn btn-outline-secondary w-100">+ New Buyer</a>
     </div>
+    {% endif %}
 
     <div class="col-md-4 mb-3">{{ form.rate_type.label(class="form-label") }} {{ form.rate_type(class="form-select") }}</div>
     <div class="col-md-4 mb-3">{{ form.rate.label(class="form-label") }} {{ form.rate(class="form-control") }}</div>

@@ -5,10 +5,10 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
-from app.forms import RentalCheckForm, RentalCustomerForm, RentalForm, RentalStatusForm
+from app.forms import RentalCheckForm, RentalForm, RentalStatusForm
 from app.models import (
-    Animal, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED, RENTAL_RETURNED,
-    Rental, RentalCheck, RentalCustomer, WeightRecord,
+    Animal, Buyer, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED, RENTAL_RETURNED,
+    Rental, RentalCheck, WeightRecord,
 )
 
 rentals_bp = Blueprint("rentals", __name__, url_prefix="/rentals")
@@ -77,10 +77,10 @@ def new_rental():
     form = RentalForm()
     bulls = [a for a in Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all() if a.is_bull]
     form.bull_id.choices = [(a.id, f"{a.display_id}{'' if a.is_rentable_available else ' (unavailable)'}") for a in bulls]
-    form.customer_id.choices = [(c.id, c.name) for c in RentalCustomer.query.order_by(RentalCustomer.name).all()]
+    form.customer_id.choices = [(c.id, c.name) for c in Buyer.query.order_by(Buyer.name).all()]
 
     if not form.customer_id.choices:
-        flash("Add a rental customer before booking a rental.", "warning")
+        flash("Add a buyer/customer before booking a rental.", "warning")
 
     if request.method == "GET":
         preselect = request.args.get("bull_id", type=int)
@@ -176,55 +176,3 @@ def update_status(rental_id):
         db.session.commit()
         flash("Rental status updated.", "success")
     return redirect(url_for("rentals.view_rental", rental_id=rental.id))
-
-
-# ---- Rental Customers ---------------------------------------------------------
-
-@rentals_bp.route("/customers")
-@login_required
-def list_customers():
-    customers = RentalCustomer.query.order_by(RentalCustomer.name).all()
-    return render_template("rentals/customers.html", customers=customers)
-
-
-@rentals_bp.route("/customers/new", methods=["GET", "POST"])
-@login_required
-def new_customer():
-    form = RentalCustomerForm()
-    if form.validate_on_submit():
-        customer = RentalCustomer(
-            name=form.name.data, phone=form.phone.data, email=form.email.data,
-            address=form.address.data, notes=form.notes.data,
-        )
-        db.session.add(customer)
-        db.session.commit()
-        flash(f"Customer {customer.name} added.", "success")
-        next_rental = request.args.get("next_rental")
-        if next_rental == "1":
-            return redirect(url_for("rentals.new_rental"))
-        return redirect(url_for("rentals.list_customers"))
-    return render_template("rentals/customer_form.html", form=form, title="New Customer")
-
-
-@rentals_bp.route("/customers/<int:customer_id>")
-@login_required
-def view_customer(customer_id):
-    customer = RentalCustomer.query.get_or_404(customer_id)
-    return render_template("rentals/customer_detail.html", customer=customer)
-
-
-@rentals_bp.route("/customers/<int:customer_id>/edit", methods=["GET", "POST"])
-@login_required
-def edit_customer(customer_id):
-    customer = RentalCustomer.query.get_or_404(customer_id)
-    form = RentalCustomerForm(obj=customer)
-    if form.validate_on_submit():
-        customer.name = form.name.data
-        customer.phone = form.phone.data
-        customer.email = form.email.data
-        customer.address = form.address.data
-        customer.notes = form.notes.data
-        db.session.commit()
-        flash("Customer updated.", "success")
-        return redirect(url_for("rentals.view_customer", customer_id=customer.id))
-    return render_template("rentals/customer_form.html", form=form, title=f"Edit {customer.name}")

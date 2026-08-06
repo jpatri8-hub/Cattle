@@ -171,7 +171,7 @@ This is meant to keep evolving with the operation — nothing here is final:
 app/
   models.py           # Full data model: Animal, AnimalType, Location/Property,
                        # BreedingGroup/ExposureRecord, CalfRecord, BullEPD,
-                       # SemenTest, Rental/RentalCustomer, FeedoutRecord,
+                       # SemenTest, Rental (customer = Buyer), FeedoutRecord,
                        # Sale/SaleLine/SaleCategory, AnimalTypeCostRate, etc.
   lifecycle.py         # Auto type-transfers, inbreeding warnings, candidate
                        # sires, rental availability & "not seen" alerts

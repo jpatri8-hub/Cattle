@@ -384,6 +384,7 @@ class BreedingGroup(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date)
     notes = db.Column(db.Text)
+    is_auto = db.Column(db.Boolean, default=False, nullable=False)
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -451,22 +452,10 @@ class CalfRecord(db.Model):
     calf_animal = db.relationship("Animal", foreign_keys=[calf_animal_id])
 
 
-class RentalCustomer(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(40))
-    email = db.Column(db.String(255))
-    address = db.Column(db.String(255))
-    notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    rentals = db.relationship("Rental", backref="customer", order_by="Rental.start_date.desc()")
-
-
 class Rental(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     bull_id = db.Column(db.Integer, db.ForeignKey("animal.id"), nullable=False)
-    customer_id = db.Column(db.Integer, db.ForeignKey("rental_customer.id"), nullable=False)
+    customer_id = db.Column(db.Integer, db.ForeignKey("buyer.id"), nullable=False)
 
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
@@ -485,6 +474,7 @@ class Rental(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     created_by = db.relationship("User")
+    customer = db.relationship("Buyer", backref=db.backref("rentals", order_by="Rental.start_date.desc()"))
     checks = db.relationship(
         "RentalCheck", backref="rental", order_by="RentalCheck.date_recorded",
         cascade="all, delete-orphan"

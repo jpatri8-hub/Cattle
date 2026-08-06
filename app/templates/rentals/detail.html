@@ -2,7 +2,8 @@
 {% block title %}Rental #{{ rental.id }} - Cattle Manager{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <h2>Rental: {{ rental.bull.display_id }} &rarr; <a href="{{ url_for('rentals.view_customer', customer_id=rental.customer_id) }}">{{ rental.customer.name }}</a>
+  <h2>Rental: {{ rental.bull.display_id }} &rarr;
+    {% if current_user.is_owner %}<a href="{{ url_for('sales.view_buyer', buyer_id=rental.customer_id) }}">{{ rental.customer.name }}</a>{% else %}{{ rental.customer.name }}{% endif %}
     <span class="badge {{ 'bg-warning text-dark' if rental.status=='active' else 'bg-secondary' }}">{{ rental.status }}</span>
     {% if rental.is_overdue %}<span class="badge bg-danger">Overdue</span>{% endif %}
     {% if rental.return_condition_score %}<span class="badge bg-info text-dark">Returned: {{ rental.return_condition_score }}</span>{% endif %}
@@ -15,7 +16,7 @@
       <h5>Rental Details</h5>
       <table class="table table-sm mb-0">
         <tr><th>Bull</th><td><a href="{{ url_for('animals.view_animal', animal_id=rental.bull_id) }}">{{ rental.bull.display_id }}</a></td></tr>
-        <tr><th>Customer</th><td><a href="{{ url_for('rentals.view_customer', customer_id=rental.customer_id) }}">{{ rental.customer.name }}</a></td></tr>
+        <tr><th>Customer</th><td>{% if current_user.is_owner %}<a href="{{ url_for('sales.view_buyer', buyer_id=rental.customer_id) }}">{{ rental.customer.name }}</a>{% else %}{{ rental.customer.name }}{% endif %}</td></tr>
         <tr><th>Phone</th><td>{{ rental.customer.phone or "-" }}</td></tr>
         <tr><th>Email</th><td>{{ rental.customer.email or "-" }}</td></tr>
         <tr><th>Start</th><td>{{ rental.start_date }}</td></tr>

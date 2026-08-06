@@ -219,18 +219,9 @@ class SemenTestForm(FlaskForm):
 
 # ---- Rentals --------------------------------------------------------------------
 
-class RentalCustomerForm(FlaskForm):
-    name = StringField("Customer Name", validators=[DataRequired(), Length(max=120)])
-    phone = StringField("Phone", validators=[Optional(), Length(max=40)])
-    email = StringField("Email", validators=[Optional(), Email(), Length(max=255)])
-    address = StringField("Address", validators=[Optional(), Length(max=255)])
-    notes = TextAreaField("Notes", validators=[Optional()])
-    submit = SubmitField("Save Customer")
-
-
 class RentalForm(FlaskForm):
     bull_id = SelectField("Bull", coerce=int, validators=[DataRequired()])
-    customer_id = SelectField("Customer", coerce=int, validators=[DataRequired()])
+    customer_id = SelectField("Buyer / Customer", coerce=int, validators=[DataRequired()])
     start_date = DateField("Start Date", validators=[DataRequired()])
     end_date = DateField("End Date", validators=[DataRequired()])
     rate = DecimalField("Rate", validators=[Optional()], places=2)
