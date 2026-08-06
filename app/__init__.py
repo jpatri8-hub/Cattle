@@ -41,12 +41,16 @@ def create_app(config_class=Config):
     from app.animals.routes import animals_bp
     from app.rentals.routes import rentals_bp
     from app.sales.routes import sales_bp
+    from app.admin.routes import admin_bp
+    from app.reports.routes import reports_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(animals_bp)
     app.register_blueprint(rentals_bp)
     app.register_blueprint(sales_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(reports_bp)
 
     @app.context_processor
     def inject_now():

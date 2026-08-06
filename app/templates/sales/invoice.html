@@ -7,8 +7,8 @@
 <div class="card card-dashboard p-5">
   <div class="d-flex justify-content-between mb-4">
     <div>
-      <h2>🐄 Cattle Manager Ranch</h2>
-      <p class="text-muted mb-0">Bill of Sale / Invoice</p>
+      <h2>🐄 Patrick's Cattle Ranch</h2>
+      <p class="text-muted mb-0">Bill of Sale / Invoice - {{ sale.category.name }}</p>
     </div>
     <div class="text-end">
       <h4>{{ sale.invoice_number }}</h4>
@@ -28,19 +28,21 @@
 
   <table class="table table-bordered">
     <thead>
-      <tr><th>Tag / ID</th><th>Sex</th><th>Breed</th><th>Registration #</th><th class="text-end">Price</th></tr>
+      <tr><th>Tag / ID</th><th>Type</th><th>Registration #</th><th>Weight</th><th class="text-end">Price</th></tr>
     </thead>
     <tbody>
+      {% for line in sale.lines %}
       <tr>
-        <td>{{ sale.animal.tag_id }}</td>
-        <td>{{ sale.animal.sex }}</td>
-        <td>{{ sale.animal.breed or "-" }}</td>
-        <td>{{ sale.animal.registration_number or "-" }}</td>
-        <td class="text-end">${{ "%.2f"|format(sale.sale_price) }}</td>
+        <td>{{ line.animal.display_id }}</td>
+        <td>{{ line.animal.animal_type.name if line.animal.animal_type else "-" }}</td>
+        <td>{{ line.animal.registration_number or "-" }}</td>
+        <td>{{ line.weight or "-" }}</td>
+        <td class="text-end">${{ "%.2f"|format(line.price) }}</td>
       </tr>
+      {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="4" class="text-end">Total</th><th class="text-end">${{ "%.2f"|format(sale.sale_price) }}</th></tr>
+      <tr><th colspan="4" class="text-end">Total</th><th class="text-end">${{ "%.2f"|format(sale.total_price) }}</th></tr>
     </tfoot>
   </table>
 

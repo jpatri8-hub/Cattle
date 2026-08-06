@@ -3,7 +3,10 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2>Bull Rental Calendar</h2>
-  <a href="{{ url_for('rentals.new_rental') }}" class="btn btn-success">+ Book Rental</a>
+  <div>
+    <a href="{{ url_for('rentals.list_customers') }}" class="btn btn-outline-secondary">Customers</a>
+    <a href="{{ url_for('rentals.new_rental') }}" class="btn btn-success">+ Book Rental</a>
+  </div>
 </div>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -12,7 +15,8 @@
   <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('rentals.calendar_view', year=next_month.year, month=next_month.month) }}">Next &raquo;</a>
 </div>
 
-<table class="table table-bordered bg-white">
+<div class="table-responsive">
+<table class="table table-bordered bg-white" style="min-width:600px;">
   <thead>
     <tr>
       {% for wd in ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] %}<th class="text-center">{{ wd }}</th>{% endfor %}
@@ -25,8 +29,8 @@
       <td class="calendar-day {{ 'bg-light' if day.month != current_month else '' }} {{ 'border-success border-2' if day == today else '' }}">
         <div class="fw-bold">{{ day.day }}</div>
         {% for r in day_rentals.get(day, []) %}
-        <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}" class="rental-chip {{ 'bg-warning text-dark' if r.status=='active' else 'bg-primary' }}" title="{{ r.bull.tag_id }} - {{ r.renter_name }}">
-          {{ r.bull.tag_id }}
+        <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}" class="rental-chip {{ 'bg-warning text-dark' if r.status=='active' else 'bg-primary' }}" title="{{ r.bull.display_id }} - {{ r.customer.name }}">
+          {{ r.bull.display_id }}
         </a>
         {% endfor %}
       </td>
@@ -35,6 +39,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 
 <div class="card card-dashboard p-3 mt-4">
   <h5>Open Rentals</h5>
@@ -43,8 +48,8 @@
     <tbody>
       {% for r in open_rentals %}
       <tr>
-        <td><a href="{{ url_for('animals.view_animal', animal_id=r.bull_id) }}">{{ r.bull.tag_id }}</a></td>
-        <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.renter_name }}</a></td>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=r.bull_id) }}">{{ r.bull.display_id }}</a></td>
+        <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.customer.name }}</a></td>
         <td>{{ r.start_date }}</td>
         <td>{{ r.end_date }}</td>
         <td><span class="badge {{ 'bg-warning text-dark' if r.status=='active' else 'bg-primary' }}">{{ r.status }}</span></td>

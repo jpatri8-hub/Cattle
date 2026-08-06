@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Edit Location - Cattle Manager{% endblock %}
+{% block content %}
+<h2>Edit Location</h2>
+<form method="post" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
+  <div class="mb-3">{{ form.property_id.label(class="form-label") }} {{ form.property_id(class="form-select") }}</div>
+  {{ form.submit(class="btn btn-success") }}
+  <a href="{{ url_for('admin.locations') }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}

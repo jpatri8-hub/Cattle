@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Cows & Heifers - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-3">Cows &amp; Heifers</h2>
+<div class="table-responsive">
+<table class="table table-sm bg-white align-middle">
+  <thead><tr><th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>Has Calf at Side</th><th>Currently Exposed</th></tr></thead>
+  <tbody>
+    {% for c in cows %}
+    <tr>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=c.id) }}">{{ c.display_id }}</a></td>
+      <td>{{ c.animal_type.name if c.animal_type else "-" }}</td>
+      <td>{{ c.age_display }}</td>
+      <td>{{ c.location.display_name if c.location else "-" }}</td>
+      <td>{% if c.calf_records_as_dam|selectattr('outcome','equalto','active')|list %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}</td>
+      <td>{% if c.exposure_records %}<span class="badge bg-info text-dark">Yes</span>{% else %}-{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-muted">No cows or heifers on farm.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

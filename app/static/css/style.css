@@ -40,3 +40,25 @@ body {
 @media print {
   .no-print { display: none !important; }
 }
+
+/* Touch-friendly sizing for phones out in the field */
+.btn, .form-select, .form-control, .form-check-input {
+  min-height: 38px;
+}
+
+.form-check-input[type="checkbox"] {
+  min-height: 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.table-responsive {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767.98px) {
+  .navbar-text { display: none; }
+  h2 { font-size: 1.4rem; }
+  .table-sm td, .table-sm th { padding: 0.5rem 0.4rem; }
+  .btn-sm { padding: 0.35rem 0.6rem; }
+}

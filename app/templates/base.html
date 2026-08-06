@@ -23,7 +23,8 @@
         {% if current_user.is_owner %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('sales.list_sales') }}">Sales</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('sales.list_buyers') }}">Buyers</a></li>
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.users') }}">Users</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('reports.overview') }}">Reports</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.index') }}">Admin</a></li>
         {% endif %}
       </ul>
       <span class="navbar-text text-white me-3">{{ current_user.name }} ({{ current_user.role }})</span>

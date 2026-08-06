@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Cost Rates - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-3">Cost Rates ($/day by Animal Type)</h2>
+<div class="row">
+  <div class="col-md-8">
+    {% for t, rates in rates_by_type.items() %}
+    <div class="card card-dashboard p-3 mb-3">
+      <h5>{{ t.name }}</h5>
+      {% if rates %}
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Effective Date</th><th>Rate / day</th></tr></thead>
+        <tbody>
+          {% for r in rates %}
+          <tr><td>{{ r.effective_date }}</td><td>${{ "%.2f"|format(r.rate_per_day) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="text-muted mb-0">No rate set yet — cost reports will show $0 for this type until one is added.</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3">
+      <h5>Add / Change Rate</h5>
+      <p class="text-muted small">Adding a new rate takes effect from its date forward; earlier costs still use the older rate.</p>
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="mb-3">{{ form.animal_type_id.label(class="form-label") }} {{ form.animal_type_id(class="form-select") }}</div>
+        <div class="mb-3">{{ form.rate_per_day.label(class="form-label") }} {{ form.rate_per_day(class="form-control") }}</div>
+        <div class="mb-3">{{ form.effective_date.label(class="form-label") }} {{ form.effective_date(class="form-control") }}</div>
+        {{ form.submit(class="btn btn-success") }}
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

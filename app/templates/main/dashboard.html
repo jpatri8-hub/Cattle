@@ -4,25 +4,58 @@
 <h2 class="mb-4">Dashboard</h2>
 
 <div class="row mb-4">
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card card-dashboard p-3 text-center">
-      <div class="text-muted">Herd Size</div>
+      <div class="text-muted">Herd Size (on farm)</div>
       <div class="display-6">{{ total_animals }}</div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card card-dashboard p-3 text-center">
-      <div class="text-muted">Available</div>
-      <div class="display-6 text-success">{{ available }}</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card card-dashboard p-3 text-center">
-      <div class="text-muted">Currently Rented</div>
-      <div class="display-6 text-warning">{{ rented_out }}</div>
+      <div class="text-muted">Bulls Available for Rent</div>
+      <div class="display-6 text-success">{{ bulls_available }}</div>
     </div>
   </div>
 </div>
+
+{% if alerts.not_seen or alerts.semen or alerts.rentals_overdue %}
+<div class="card card-dashboard p-3 mb-4 border-warning">
+  <h5 class="text-warning-emphasis">⚠ Flags Needing Attention</h5>
+  <div class="row">
+    {% if alerts.not_seen %}
+    <div class="col-md-4">
+      <h6>Not Seen in 4+ Months ({{ alerts.not_seen|length }})</h6>
+      <ul class="list-group list-group-flush">
+        {% for a in alerts.not_seen[:8] %}
+        <li class="list-group-item"><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}">{{ a.display_id }}</a> <small class="text-muted">last seen {{ a.last_seen_date or "never" }}</small></li>
+        {% endfor %}
+      </ul>
+      {% if alerts.not_seen|length > 8 %}<a href="{{ url_for('animals.list_animals', flagged=1) }}" class="small">See all &rarr;</a>{% endif %}
+    </div>
+    {% endif %}
+    {% if alerts.semen %}
+    <div class="col-md-4">
+      <h6>Bulls Needing Semen Test ({{ alerts.semen|length }})</h6>
+      <ul class="list-group list-group-flush">
+        {% for bull, reason in alerts.semen[:8] %}
+        <li class="list-group-item"><a href="{{ url_for('animals.view_animal', animal_id=bull.id) }}">{{ bull.display_id }}</a> <small class="text-muted">{{ reason }}</small></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if alerts.rentals_overdue %}
+    <div class="col-md-4">
+      <h6>Overdue Rentals ({{ alerts.rentals_overdue|length }})</h6>
+      <ul class="list-group list-group-flush">
+        {% for r in alerts.rentals_overdue %}
+        <li class="list-group-item"><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }} - {{ r.customer.name }}</a> <small class="text-muted">due {{ r.end_date }}</small></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
 <div class="row">
   <div class="col-md-6 mb-4">
@@ -32,7 +65,7 @@
       <ul class="list-group list-group-flush">
         {% for r in upcoming_returns %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.tag_id }} - {{ r.renter_name }}</a>
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }} - {{ r.customer.name }}</a>
           <span class="{{ 'text-danger fw-bold' if r.is_overdue else '' }}">{{ r.end_date }}</span>
         </li>
         {% endfor %}
@@ -48,7 +81,7 @@
       <ul class="list-group list-group-flush">
         {% for r in upcoming_bookings %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.tag_id }} - {{ r.renter_name }}</a>
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }} - {{ r.customer.name }}</a>
           <span>{{ r.start_date }}</span>
         </li>
         {% endfor %}
@@ -64,7 +97,7 @@
       <ul class="list-group list-group-flush">
         {% for h in overdue_vaccines %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('animals.view_animal', animal_id=h.animal_id) }}">{{ h.animal.tag_id }} - {{ h.description }}</a>
+          <a href="{{ url_for('animals.view_animal', animal_id=h.animal_id) }}">{{ h.animal.display_id }} - {{ h.description }}</a>
           <span class="{{ 'text-danger fw-bold' if h.next_due_date < today else '' }}">{{ h.next_due_date }}</span>
         </li>
         {% endfor %}
@@ -81,12 +114,13 @@
       <ul class="list-group list-group-flush">
         {% for s in recent_sales %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.animal.tag_id }} → {{ s.buyer.name }}</a>
-          <span>${{ "%.2f"|format(s.sale_price) }}</span>
+          <a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.invoice_number }} - {{ s.buyer.name }}</a>
+          <span>${{ "%.2f"|format(s.total_price) }}</span>
         </li>
         {% endfor %}
       </ul>
       {% else %}<p class="text-muted mb-0">No sales recorded yet.</p>{% endif %}
+      <a href="{{ url_for('reports.overview') }}" class="small mt-2 d-inline-block">Full reports &rarr;</a>
     </div>
   </div>
   {% endif %}
