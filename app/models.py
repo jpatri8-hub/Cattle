@@ -168,18 +168,14 @@ class Animal(db.Model):
 
     animal_type_id = db.Column(db.Integer, db.ForeignKey("animal_type.id"), nullable=False)
     sex = db.Column(db.String(10), nullable=False)
-    breed = db.Column(db.String(80))
     birth_date = db.Column(db.Date)
     birth_weight = db.Column(db.Numeric(7, 2))
-    color = db.Column(db.String(60))
 
     location_id = db.Column(db.Integer, db.ForeignKey("location.id"))
     birth_location_id = db.Column(db.Integer, db.ForeignKey("location.id"))
     notes = db.Column(db.Text)
-    photo_filename = db.Column(db.String(255))
 
     registration_number = db.Column(db.String(80))
-    registration_file = db.Column(db.String(255))
 
     sire_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
     dam_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
@@ -317,6 +313,16 @@ class Animal(db.Model):
         )
         if open_rental:
             return "Out on rent" if open_rental.status == RENTAL_ACTIVE else "Committed to a rental"
+        if self.location_id:
+            with_females = Animal.query.filter_by(
+                location_id=self.location_id, is_active=True, sex=SEX_FEMALE
+            ).all()
+            with_females = [
+                a for a in with_females
+                if a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
+            ]
+            if with_females:
+                return f"With cows/heifers at {self.location.display_name if self.location else 'current location'}"
         last_returned = next((r for r in self.rentals if r.status == RENTAL_RETURNED and r.actual_return_date), None)
         if last_returned:
             days_since = (date.today() - last_returned.actual_return_date).days
@@ -497,10 +503,8 @@ class RentalCheck(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     rental_id = db.Column(db.Integer, db.ForeignKey("rental.id"), nullable=False)
     check_type = db.Column(db.String(20), nullable=False)  # pickup or return
-    weight = db.Column(db.Numeric(7, 2))
     condition_score = db.Column(db.String(10))  # Good / Slim / Poor - typically set on return
     condition_notes = db.Column(db.Text)
-    health_notes = db.Column(db.Text)
     date_recorded = db.Column(db.Date, nullable=False, default=date.today)
     recorded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     recorded_by = db.relationship("User")

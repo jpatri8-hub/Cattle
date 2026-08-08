@@ -12,8 +12,18 @@ main_bp = Blueprint("main", __name__)
 @main_bp.route("/")
 @login_required
 def dashboard():
-    total_animals = Animal.query.filter_by(is_active=True).count()
-    bulls_available = len([a for a in Animal.query.filter_by(is_active=True).all() if a.is_rentable_available])
+    active_animals = Animal.query.filter_by(is_active=True).all()
+    bulls_available = len([a for a in active_animals if a.is_rentable_available])
+
+    counts_by_type = {}
+    counts_by_location = {}
+    for a in active_animals:
+        type_name = a.animal_type.name if a.animal_type else "Unknown Type"
+        counts_by_type[type_name] = counts_by_type.get(type_name, 0) + 1
+        loc_name = a.location.display_name if a.location else "No Location"
+        counts_by_location[loc_name] = counts_by_location.get(loc_name, 0) + 1
+    counts_by_type = dict(sorted(counts_by_type.items()))
+    counts_by_location = dict(sorted(counts_by_location.items()))
 
     today = date.today()
     soon = today + timedelta(days=14)
@@ -52,7 +62,8 @@ def dashboard():
 
     return render_template(
         "main/dashboard.html",
-        total_animals=total_animals,
+        counts_by_type=counts_by_type,
+        counts_by_location=counts_by_location,
         bulls_available=bulls_available,
         upcoming_returns=upcoming_returns,
         upcoming_bookings=upcoming_bookings,

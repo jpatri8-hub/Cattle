@@ -1,5 +1,4 @@
-import calendar
-from datetime import date, timedelta
+from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -8,7 +7,7 @@ from app import db
 from app.forms import RentalCheckForm, RentalForm, RentalStatusForm
 from app.models import (
     Animal, Buyer, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED, RENTAL_RETURNED,
-    Rental, RentalCheck, WeightRecord,
+    Rental, RentalCheck,
 )
 
 rentals_bp = Blueprint("rentals", __name__, url_prefix="/rentals")
@@ -26,49 +25,15 @@ def _has_conflict(bull_id, start_date, end_date, exclude_rental_id=None):
     return query.first()
 
 
-@rentals_bp.route("/calendar")
+@rentals_bp.route("/")
 @login_required
-def calendar_view():
-    today = date.today()
-    year = request.args.get("year", today.year, type=int)
-    month = request.args.get("month", today.month, type=int)
-
-    first_of_month = date(year, month, 1)
-    prev_month = (first_of_month - timedelta(days=1)).replace(day=1)
-    next_month = (first_of_month + timedelta(days=32)).replace(day=1)
-
-    cal = calendar.Calendar(firstweekday=6)  # start weeks on Sunday
-    month_days = cal.monthdatescalendar(year, month)
-
-    rentals = Rental.query.filter(
-        Rental.status.in_([RENTAL_BOOKED, RENTAL_ACTIVE]),
-        Rental.start_date <= month_days[-1][-1],
-        Rental.end_date >= month_days[0][0],
-    ).all()
-
-    day_rentals = {}
-    for r in rentals:
-        d = max(r.start_date, month_days[0][0])
-        end = min(r.end_date, month_days[-1][-1])
-        while d <= end:
-            day_rentals.setdefault(d, []).append(r)
-            d += timedelta(days=1)
-
-    bulls = [a for a in Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all() if a.is_bull]
-    open_rentals = Rental.query.filter(Rental.status.in_([RENTAL_BOOKED, RENTAL_ACTIVE])).order_by(Rental.start_date).all()
-
-    return render_template(
-        "rentals/calendar.html",
-        month_days=month_days,
-        day_rentals=day_rentals,
-        month_name=first_of_month.strftime("%B %Y"),
-        prev_month=prev_month,
-        next_month=next_month,
-        current_month=month,
-        bulls=bulls,
-        open_rentals=open_rentals,
-        today=today,
-    )
+def list_rentals():
+    status_filter = request.args.get("status", "")
+    query = Rental.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    rentals = query.order_by(Rental.start_date.desc()).all()
+    return render_template("rentals/list.html", rentals=rentals, status_filter=status_filter)
 
 
 @rentals_bp.route("/new", methods=["GET", "POST"])
@@ -131,23 +96,12 @@ def add_check(rental_id):
         check = RentalCheck(
             rental_id=rental.id,
             check_type=form.check_type.data,
-            weight=form.weight.data,
             condition_score=form.condition_score.data or None,
             condition_notes=form.condition_notes.data,
-            health_notes=form.health_notes.data,
             date_recorded=form.date_recorded.data,
             recorded_by_id=current_user.id,
         )
         db.session.add(check)
-
-        if form.weight.data:
-            db.session.add(WeightRecord(
-                animal_id=rental.bull_id,
-                weight=form.weight.data,
-                date_recorded=form.date_recorded.data,
-                notes=f"Rental {form.check_type.data} check ({rental.customer.name})",
-                recorded_by_id=current_user.id,
-            ))
 
         if form.check_type.data == "pickup" and rental.status == RENTAL_BOOKED:
             rental.status = RENTAL_ACTIVE

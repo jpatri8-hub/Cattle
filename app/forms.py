@@ -69,17 +69,13 @@ class AnimalForm(FlaskForm):
     tag_id = StringField("Tag / ID Number", validators=[Optional(), Length(max=40)])
     name = StringField("Name", validators=[Optional(), Length(max=120)])
     animal_type_id = SelectField("Type", coerce=int, validators=[DataRequired()])
-    breed = StringField("Breed", validators=[Optional(), Length(max=80)])
     birth_date = DateField("Birth Date", validators=[Optional()])
     birth_weight = DecimalField("Birth Weight (lbs)", validators=[Optional()], places=2)
-    color = StringField("Color", validators=[Optional(), Length(max=60)])
     location_id = SelectField("Location", coerce=int, validators=[Optional()])
     birth_location_id = SelectField("Birth Location", coerce=int, validators=[Optional()])
     sire_id = SelectField("Sire (known/actual)", coerce=int, validators=[Optional()])
     dam_id = SelectField("Dam (known/actual)", coerce=int, validators=[Optional()])
     registration_number = StringField("Registration Number", validators=[Optional(), Length(max=80)])
-    registration_file = FileField("Registration Papers", validators=[FileAllowed(["pdf", "png", "jpg", "jpeg"])])
-    photo = FileField("Photo", validators=[FileAllowed(["png", "jpg", "jpeg", "gif"])])
     purchase_date = DateField("Purchase Date", validators=[Optional()])
     purchase_price = DecimalField("Purchase Price", validators=[Optional()], places=2)
     notes = TextAreaField("Notes", validators=[Optional()])
@@ -158,8 +154,6 @@ class CalfBirthForm(FlaskForm):
     calving_date = DateField("Calving Date", validators=[DataRequired()])
     calf_sex = SelectField("Calf Sex", choices=[(s, s.capitalize()) for s in SEX_CHOICES], validators=[DataRequired()])
     birth_weight = DecimalField("Birth Weight (lbs)", validators=[Optional()], places=2)
-    sire_id = SelectField("Sire (if known)", coerce=int, validators=[Optional()])
-    breeding_group_id = SelectField("Breeding Group (if known)", coerce=int, validators=[Optional()])
     birth_location_id = SelectField("Birth Location", coerce=int, validators=[Optional()])
     animal_type_id = SelectField("Calf Type", coerce=int, validators=[DataRequired()])
     notes = TextAreaField("Notes", validators=[Optional()])
@@ -233,12 +227,10 @@ class RentalForm(FlaskForm):
 
 class RentalCheckForm(FlaskForm):
     check_type = SelectField("Check Type", choices=[("pickup", "Pickup"), ("return", "Return")])
-    weight = DecimalField("Weight (lbs)", validators=[Optional()], places=2)
     condition_score = SelectField(
         "Condition Score", choices=[("", "-- N/A --")] + [(c, c) for c in CONDITION_SCORE_CHOICES], validators=[Optional()]
     )
     condition_notes = TextAreaField("Condition Notes", validators=[Optional()])
-    health_notes = TextAreaField("Health Notes", validators=[Optional()])
     date_recorded = DateField("Date", validators=[DataRequired()])
     submit = SubmitField("Log Check")
 

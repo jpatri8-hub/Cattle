@@ -23,6 +23,6 @@
     <div class="col-12 mb-3">{{ form.contract_notes.label(class="form-label") }} {{ form.contract_notes(class="form-control", rows=4) }}</div>
   </div>
   {{ form.submit(class="btn btn-success") }}
-  <a href="{{ url_for('rentals.calendar_view') }}" class="btn btn-link">Cancel</a>
+  <a href="{{ url_for('rentals.list_rentals') }}" class="btn btn-link">Cancel</a>
 </form>
 {% endblock %}

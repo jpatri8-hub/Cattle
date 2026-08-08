@@ -4,16 +4,30 @@
 <h2 class="mb-4">Dashboard</h2>
 
 <div class="row mb-4">
-  <div class="col-md-6">
-    <div class="card card-dashboard p-3 text-center">
-      <div class="text-muted">Herd Size (on farm)</div>
-      <div class="display-6">{{ total_animals }}</div>
-    </div>
-  </div>
-  <div class="col-md-6">
+  <div class="col-md-4">
     <div class="card card-dashboard p-3 text-center">
       <div class="text-muted">Bulls Available for Rent</div>
       <div class="display-6 text-success">{{ bulls_available }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3">
+      <div class="text-muted mb-1">On Farm by Type</div>
+      <ul class="list-group list-group-flush">
+        {% for type_name, count in counts_by_type.items() %}
+        <li class="list-group-item d-flex justify-content-between py-1"><span>{{ type_name }}</span><span class="fw-semibold">{{ count }}</span></li>
+        {% else %}<li class="list-group-item text-muted py-1">No animals on farm.</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-dashboard p-3">
+      <div class="text-muted mb-1">On Farm by Location</div>
+      <ul class="list-group list-group-flush">
+        {% for loc_name, count in counts_by_location.items() %}
+        <li class="list-group-item d-flex justify-content-between py-1"><span>{{ loc_name }}</span><span class="fw-semibold">{{ count }}</span></li>
+        {% else %}<li class="list-group-item text-muted py-1">No animals on farm.</li>{% endfor %}
+      </ul>
     </div>
   </div>
 </div>

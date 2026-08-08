@@ -19,6 +19,3 @@ class Config:
         os.environ.get("DATABASE_URL", f"sqlite:///{os.path.join(basedir, 'instance', 'cattle.db')}")
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", os.path.join(basedir, "app", "static", "uploads"))
-    MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8 MB uploads
-    ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "pdf"}
