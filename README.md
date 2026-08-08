@@ -11,11 +11,12 @@ browser as well as a desktop.
   Angus Cow", "Commercial Bull Calf") that drives its sex, and types can be
   configured to **automatically transfer** into another type — e.g. a bull
   calf becomes a bull at 12 months, or a heifer becomes a cow once her first
-  calf is weaned. View the herd by location or by type, current-on-farm vs.
-  archived (sold/deceased/culled/lost) animals are kept separate.
+  calf is weaned. View the herd by location or by type, search by tag/temp
+  ID/name, see the current result count, current-on-farm vs. archived
+  (sold/deceased/culled/lost) animals are kept separate.
 - **Bulk operations** — select multiple animals from the herd list to move
-  them to a new location, log a vaccination across all of them at once, or
-  send them into a bulk/truckload sale.
+  them to a new location, log a vaccination or a semen test across all of
+  them at once, or send them into a bulk/truckload sale.
 - **Inventory checks** — log who saw an animal, where, its health status, and
   when. Vaccination records also count as "seen." Any active animal not seen
   in 4+ months is flagged on the dashboard and in the herd list.
@@ -23,18 +24,23 @@ browser as well as a desktop.
   later) directly from the dam's page; track each calf's outcome (lost,
   died after birth, culled + reason, retained, sold-not-cull); see at a
   glance which cows currently have a calf at side.
-- **Breeding groups** — record which bull(s) ran with which cows/heifers at a
-  location over a date range (supports multiple bulls per group), track
-  confirmed-bred status, and every calf born gets a record of candidate
-  sires (bulls present at her birth location during the likely conception
-  window) so the app can flag inbreeding risk before you rebreed her.
+- **Breeding groups & exposure track themselves** — whenever a bull and a
+  cow/heifer are in the same location, the app automatically opens/updates
+  a breeding group and records her exposure, closing it once they're no
+  longer paired up (manual groups are still available for planning ahead).
+  Every calf born automatically gets candidate sires assigned from her
+  dam's actual exposure in the prior 6-12 months, so the app can flag
+  inbreeding risk before you rebreed her.
 - **Bulls** — manual EPD entry (CED, birth weight, and more) shown in list
   view; availability automatically reflects being out on rent, committed to
-  a future rental, a 15-day hold after return, or a bad/retest semen result;
-  condition score (Good/Slim/Poor) recorded on return; rental history shown
-  at both the bull and the customer level.
-- **Rentals** — availability-aware booking calendar, rental customers with
-  full history, pickup/return checks with weight and condition score.
+  a future rental, currently paired with cows/heifers for natural breeding,
+  a 15-day hold after return, or a bad/retest semen result; condition score
+  (Good/Slim/Poor) recorded on return; rental history shown at both the bull
+  and the buyer level; export a filtered CSV of on-farm bulls with semen
+  test, availability, and renter info (renter details drop off the export
+  60 days after a rental's return).
+- **Rentals** — availability-aware booking, buyers double as rental
+  customers with full history, pickup/return checks with condition score.
 - **Steers** — castration date and method.
 - **Feedlot / butcher calves** — starting age/weight, days on feed, hanging
   weight, dressed yield, steak grade; average grade and average daily gain
@@ -111,10 +117,6 @@ Render, Railway, Fly.io, or similar platforms:
    platforms with ephemeral filesystems.
 3. Run `python3 seed.py` once (via a one-off shell/console on the platform) to
    create your first Owner account, or add a user directly via SQL.
-4. Make sure the `app/static/uploads` folder is on persistent storage, or
-   point `UPLOAD_FOLDER` at a mounted volume / object storage path, so animal
-   photos and registration papers survive restarts.
-
 Because it's just a mobile-responsive website (no app store install), open
 the deployed URL on an iPhone and use "Add to Home Screen" from Safari's
 share sheet for a one-tap icon.
@@ -135,8 +137,8 @@ share sheet for a one-tap icon.
    Bull Sale, Truckload Calf Sale, Cull Cow Sale) is seeded; add your own.
 6. **Import your current herd** — from Admin, use "Import Animals (CSV)" to
    bulk-load your ~300–450 head. Columns: `tag_id`, `animal_type` (must
-   match a type name from step 3 exactly), `name`, `breed`, `birth_date`
-   (YYYY-MM-DD), `color`, `location` (must match a location from step 2),
+   match a type name from step 3 exactly), `name`, `birth_date`
+   (YYYY-MM-DD), `location` (must match a location from step 2),
    `registration_number`, `notes`.
 7. **Add staff (Hand) accounts** — Admin → Users → New User, role "hand".
 
@@ -180,7 +182,7 @@ app/
   animals/             # herd CRUD, weight/health/inventory checks, bulk ops,
                        # CSV import, cows/calves, breeding groups, bulls
                        # (EPD/semen), steers (castration), feedlot/butcher
-  rentals/             # availability calendar, booking, customers, checks
+  rentals/             # availability-aware booking, list, pickup/return checks
   sales/               # buyers, sale categories, single/bulk sales, invoice
   admin/                # types, properties, locations, sale categories,
                        # cost rates (all Owner-editable, no code changes)

@@ -21,7 +21,6 @@ def create_app(config_class=Config):
     db_uri = app.config["SQLALCHEMY_DATABASE_URI"]
     if db_uri.startswith("sqlite:///"):
         os.makedirs(os.path.dirname(db_uri[len("sqlite:///"):]), exist_ok=True)
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
     db.init_app(app)
     migrate.init_app(app, db)

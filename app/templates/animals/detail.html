@@ -41,24 +41,16 @@
 
 <div class="row">
   <div class="col-md-4 mb-4">
-    {% if animal.photo_filename %}
-    <img src="{{ url_for('static', filename='uploads/' + animal.photo_filename) }}" class="animal-photo mb-3" style="max-height:280px;">
-    {% endif %}
     <div class="card card-dashboard p-3">
       <h5>Details</h5>
       <table class="table table-sm mb-0">
         <tr><th>Sex</th><td>{{ animal.sex.capitalize() }}</td></tr>
-        <tr><th>Breed</th><td>{{ animal.breed or "-" }}</td></tr>
-        <tr><th>Color</th><td>{{ animal.color or "-" }}</td></tr>
         <tr><th>Birth Date</th><td>{{ animal.birth_date or "-" }} ({{ animal.age_display }})</td></tr>
         <tr><th>Birth Weight</th><td>{{ animal.birth_weight or "-" }} lbs</td></tr>
         <tr><th>Location</th><td>{{ animal.location.display_name if animal.location else "-" }}</td></tr>
         <tr><th>Birth Location</th><td>{{ animal.birth_location.display_name if animal.birth_location else "-" }}</td></tr>
         <tr><th>Current Weight</th><td>{{ animal.current_weight or "-" }} lbs</td></tr>
         <tr><th>Registration #</th><td>{{ animal.registration_number or "-" }}</td></tr>
-        {% if animal.registration_file %}
-        <tr><th>Papers</th><td><a href="{{ url_for('static', filename='uploads/' + animal.registration_file) }}" target="_blank">View File</a></td></tr>
-        {% endif %}
         <tr><th>Sire</th><td>{% if animal.sire %}<a href="{{ url_for('animals.view_animal', animal_id=animal.sire.id) }}">{{ animal.sire.display_id }}</a>{% else %}-{% endif %}</td></tr>
         <tr><th>Dam</th><td>{% if animal.dam %}<a href="{{ url_for('animals.view_animal', animal_id=animal.dam.id) }}">{{ animal.dam.display_id }}</a>{% else %}-{% endif %}</td></tr>
         {% if animal.candidate_sires %}
@@ -211,11 +203,10 @@
           <div class="col-auto">{{ calf_form.calf_sex.label(class="form-label small") }} {{ calf_form.calf_sex(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ calf_form.animal_type_id.label(class="form-label small") }} {{ calf_form.animal_type_id(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ calf_form.birth_weight.label(class="form-label small") }} {{ calf_form.birth_weight(class="form-control form-control-sm") }}</div>
-          <div class="col-auto">{{ calf_form.sire_id.label(class="form-label small") }} {{ calf_form.sire_id(class="form-select form-select-sm") }}</div>
-          <div class="col-auto">{{ calf_form.breeding_group_id.label(class="form-label small") }} {{ calf_form.breeding_group_id(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ calf_form.birth_location_id.label(class="form-label small") }} {{ calf_form.birth_location_id(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ calf_form.notes(class="form-control form-control-sm", placeholder="Notes") }}</div>
           <div class="col-auto">{{ calf_form.submit(class="btn btn-sm btn-success") }}</div>
+          <div class="col-12"><small class="text-muted">Candidate sires are assigned automatically from her breeding exposure in the prior 6-12 months.</small></div>
         </form>
       </div>
     </div>

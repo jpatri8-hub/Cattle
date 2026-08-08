@@ -2,39 +2,10 @@ body {
   background-color: #f7f7f2;
 }
 
-.animal-photo {
-  width: 100%;
-  max-height: 220px;
-  object-fit: cover;
-  border-radius: 0.5rem;
-  background: #e9ecef;
-}
-
-.status-badge-available { background-color: #198754; }
-.status-badge-rented { background-color: #fd7e14; }
-.status-badge-sold { background-color: #6c757d; }
-.status-badge-deceased { background-color: #212529; }
-
 .card-dashboard {
   border: none;
   border-radius: 0.75rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-
-.calendar-day {
-  min-height: 90px;
-  vertical-align: top;
-  font-size: 0.8rem;
-}
-
-.calendar-day .rental-chip {
-  display: block;
-  border-radius: 0.25rem;
-  padding: 2px 4px;
-  margin-bottom: 2px;
-  color: #fff;
-  font-size: 0.72rem;
-  text-decoration: none;
 }
 
 @media print {
@@ -61,4 +32,11 @@ body {
   h2 { font-size: 1.4rem; }
   .table-sm td, .table-sm th { padding: 0.5rem 0.4rem; }
   .btn-sm { padding: 0.35rem 0.6rem; }
+}
+
+/* Compact table rows, similar density to the dashboard's list-group panels */
+.table-compact td, .table-compact th {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  vertical-align: middle;
 }

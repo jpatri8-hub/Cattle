@@ -46,19 +46,17 @@
     <div class="card card-dashboard p-3">
       <h5>Pickup / Return Checks</h5>
       <table class="table table-sm">
-        <thead><tr><th>Date</th><th>Type</th><th>Weight</th><th>Condition Score</th><th>Notes</th><th>Health</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Condition Score</th><th>Notes</th></tr></thead>
         <tbody>
           {% for c in rental.checks %}
           <tr>
             <td>{{ c.date_recorded }}</td>
             <td><span class="badge bg-info text-dark">{{ c.check_type }}</span></td>
-            <td>{{ c.weight or "-" }}</td>
             <td>{{ c.condition_score or "-" }}</td>
             <td>{{ c.condition_notes or "-" }}</td>
-            <td>{{ c.health_notes or "-" }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-muted">No checks logged yet.</td></tr>
+          <tr><td colspan="4" class="text-muted">No checks logged yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -66,10 +64,8 @@
         {{ check_form.hidden_tag() }}
         <div class="col-auto">{{ check_form.check_type.label(class="form-label") }} {{ check_form.check_type(class="form-select") }}</div>
         <div class="col-auto">{{ check_form.date_recorded.label(class="form-label") }} {{ check_form.date_recorded(class="form-control") }}</div>
-        <div class="col-auto">{{ check_form.weight.label(class="form-label") }} {{ check_form.weight(class="form-control") }}</div>
         <div class="col-auto">{{ check_form.condition_score.label(class="form-label") }} {{ check_form.condition_score(class="form-select") }}</div>
-        <div class="col-md-3">{{ check_form.condition_notes.label(class="form-label") }} {{ check_form.condition_notes(class="form-control") }}</div>
-        <div class="col-md-3">{{ check_form.health_notes.label(class="form-label") }} {{ check_form.health_notes(class="form-control") }}</div>
+        <div class="col-md-4">{{ check_form.condition_notes.label(class="form-label") }} {{ check_form.condition_notes(class="form-control") }}</div>
         <div class="col-auto">{{ check_form.submit(class="btn btn-outline-success") }}</div>
       </form>
       <p class="text-muted small mt-2 mb-0">Logging a "pickup" check moves the rental to Active. Logging a "return" check moves the rental to Returned and records the condition score - the bull stays unavailable for 15 days after.</p>

@@ -19,7 +19,7 @@
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('animals.list_animals') }}">Herd</a></li>
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('rentals.calendar_view') }}">Rentals</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('rentals.list_rentals') }}">Rentals</a></li>
         {% if current_user.is_owner %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('sales.list_sales') }}">Sales</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('sales.list_buyers') }}">Buyers</a></li>
@@ -45,6 +45,12 @@
       {% endfor %}
     {% endif %}
   {% endwith %}
+
+  {% if current_user.is_authenticated and request.endpoint != 'main.dashboard' %}
+  <div class="no-print mb-2">
+    <a href="javascript:history.back()" class="btn btn-sm btn-outline-secondary">&larr; Back</a>
+  </div>
+  {% endif %}
 
   {% block content %}{% endblock %}
 </div>

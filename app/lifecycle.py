@@ -62,6 +62,34 @@ def inbreeding_warnings(bull, dam):
     return warnings
 
 
+DAM_EXPOSURE_LOOKBACK_MIN_DAYS = 182  # ~6 months
+DAM_EXPOSURE_LOOKBACK_MAX_DAYS = 365  # ~12 months
+
+
+def compute_dam_candidate_sires(dam, calving_date):
+    """Looks at the dam's recorded breeding-group exposures in the 6-12 months
+    before calving_date and returns (bulls, breeding_groups) - every bull she
+    could plausibly have been bred by in that window. Typically 2-5 bulls when
+    more than one ran with her."""
+    if not calving_date:
+        return [], []
+    window_start = calving_date - timedelta(days=DAM_EXPOSURE_LOOKBACK_MAX_DAYS)
+    window_end = calving_date - timedelta(days=DAM_EXPOSURE_LOOKBACK_MIN_DAYS)
+
+    bulls = {}
+    matched_groups = []
+    for exposure in dam.exposure_records:
+        group = exposure.breeding_group
+        if not group:
+            continue
+        group_end = group.end_date or date.today()
+        if group.start_date <= window_end and group_end >= window_start:
+            matched_groups.append(group)
+            for bull in group.bulls:
+                bulls[bull.id] = bull
+    return list(bulls.values()), matched_groups
+
+
 def generate_temp_id():
     year = date.today().year
     prefix = f"C{year}"

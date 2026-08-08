@@ -13,14 +13,13 @@ from app.forms import (
 )
 from app.lifecycle import (
     apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
-    generate_temp_id, inbreeding_warnings,
+    compute_dam_candidate_sires, generate_temp_id, inbreeding_warnings,
 )
 from app.models import (
     Animal, AnimalType, BreedingGroup, BullEPD, CALF_OUTCOME_ACTIVE, CalfRecord,
     ExposureRecord, FeedoutRecord, HealthRecord, LastSeenCheck,
-    Location, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
+    Location, RENTAL_ACTIVE, RENTAL_BOOKED, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
 )
-from app.utils import save_upload
 
 animals_bp = Blueprint("animals", __name__, url_prefix="/animals")
 
@@ -113,10 +112,6 @@ def view_animal(animal_id):
     calf_form = None
     if animal.sex == SEX_FEMALE:
         calf_form = CalfBirthForm(calving_date=date.today())
-        calf_form.sire_id.choices = [(0, "-- Unknown --")] + _bull_choices()
-        calf_form.breeding_group_id.choices = [(0, "-- None --")] + [
-            (g.id, f"{g.location.name} ({g.start_date})") for g in BreedingGroup.query.order_by(BreedingGroup.start_date.desc()).all()
-        ]
         calf_form.birth_location_id.choices = _location_choices()
         calf_form.birth_location_id.data = animal.location_id or 0
         calf_form.animal_type_id.choices = _type_choices()
@@ -164,10 +159,8 @@ def new_animal():
                 name=form.name.data,
                 animal_type_id=atype.id,
                 sex=atype.sex,
-                breed=form.breed.data,
                 birth_date=form.birth_date.data,
                 birth_weight=form.birth_weight.data,
-                color=form.color.data,
                 location_id=form.location_id.data or None,
                 birth_location_id=form.birth_location_id.data or None,
                 sire_id=form.sire_id.data or None,
@@ -179,9 +172,6 @@ def new_animal():
             if current_user.is_owner:
                 animal.purchase_date = form.purchase_date.data
                 animal.purchase_price = form.purchase_price.data
-
-            animal.photo_filename = save_upload(form.photo.data)
-            animal.registration_file = save_upload(form.registration_file.data)
 
             db.session.add(animal)
             db.session.commit()
@@ -221,10 +211,8 @@ def edit_animal(animal_id):
             animal.name = form.name.data
             animal.animal_type_id = atype.id
             animal.sex = atype.sex
-            animal.breed = form.breed.data
             animal.birth_date = form.birth_date.data
             animal.birth_weight = form.birth_weight.data
-            animal.color = form.color.data
             animal.location_id = form.location_id.data or None
             animal.birth_location_id = form.birth_location_id.data or None
             animal.sire_id = form.sire_id.data or None
@@ -235,13 +223,6 @@ def edit_animal(animal_id):
             if current_user.is_owner:
                 animal.purchase_date = form.purchase_date.data
                 animal.purchase_price = form.purchase_price.data
-
-            new_photo = save_upload(form.photo.data)
-            if new_photo:
-                animal.photo_filename = new_photo
-            new_reg = save_upload(form.registration_file.data)
-            if new_reg:
-                animal.registration_file = new_reg
 
             db.session.commit()
             flash(f"Animal {animal.display_id} updated.", "success")
@@ -457,9 +438,7 @@ def import_csv():
                 name=(row.get("name") or "").strip() or None,
                 animal_type_id=atype.id,
                 sex=atype.sex,
-                breed=(row.get("breed") or "").strip() or None,
                 birth_date=birth_date,
-                color=(row.get("color") or "").strip() or None,
                 location_id=loc.id if loc else None,
                 registration_number=(row.get("registration_number") or "").strip() or None,
                 notes=(row.get("notes") or "").strip() or None,
@@ -491,10 +470,6 @@ def list_cows():
 def record_calf(cow_id):
     dam = Animal.query.get_or_404(cow_id)
     form = CalfBirthForm()
-    form.sire_id.choices = [(0, "-- Unknown --")] + _bull_choices()
-    form.breeding_group_id.choices = [(0, "-- None --")] + [
-        (g.id, f"{g.location.name} ({g.start_date})") for g in BreedingGroup.query.order_by(BreedingGroup.start_date.desc()).all()
-    ]
     form.birth_location_id.choices = _location_choices()
     form.animal_type_id.choices = _type_choices()
 
@@ -509,18 +484,24 @@ def record_calf(cow_id):
             location_id=dam.location_id,
             birth_location_id=birth_location_id,
             dam_id=dam.id,
-            sire_id=form.sire_id.data or None,
             notes=form.notes.data,
             created_by_id=current_user.id,
         )
         db.session.add(calf)
         db.session.commit()
-        apply_candidate_sires(calf)
+
+        candidate_sires, matched_groups = compute_dam_candidate_sires(dam, form.calving_date.data)
+        calf.candidate_sires = candidate_sires
+        chosen_group = matched_groups[0] if len(matched_groups) == 1 else None
+        chosen_sire = candidate_sires[0] if len(candidate_sires) == 1 else None
+        if chosen_sire:
+            calf.sire_id = chosen_sire.id
+        db.session.commit()
 
         record = CalfRecord(
             dam_id=dam.id,
-            sire_id=form.sire_id.data or None,
-            breeding_group_id=form.breeding_group_id.data or None,
+            sire_id=chosen_sire.id if chosen_sire else None,
+            breeding_group_id=chosen_group.id if chosen_group else None,
             calving_date=form.calving_date.data,
             calf_sex=form.calf_sex.data,
             birth_weight=form.birth_weight.data,
@@ -531,7 +512,13 @@ def record_calf(cow_id):
         )
         db.session.add(record)
         db.session.commit()
-        flash(f"Calf recorded for {dam.display_id} (temp ID {calf.temp_id}).", "success")
+
+        msg = f"Calf recorded for {dam.display_id} (temp ID {calf.temp_id})."
+        if candidate_sires:
+            msg += f" Candidate sire(s): {', '.join(b.display_id for b in candidate_sires)}."
+        else:
+            msg += " No breeding exposure found in the prior 6-12 months, so no candidate sires were assigned."
+        flash(msg, "success")
     else:
         flash("Could not record the calf - check the form.", "danger")
     return redirect(url_for("animals.view_animal", animal_id=dam.id))
@@ -731,6 +718,14 @@ def export_bulls():
     for b in bulls:
         test = b.latest_semen_test
         rental = b.latest_rental
+        show_rental = False
+        if rental:
+            if rental.status in (RENTAL_ACTIVE, RENTAL_BOOKED):
+                show_rental = True
+            else:
+                reference_date = rental.actual_return_date or rental.end_date
+                if reference_date and (date.today() - reference_date).days <= 60:
+                    show_rental = True
         writer.writerow([
             b.display_id,
             b.animal_type.name if b.animal_type else "",
@@ -738,10 +733,10 @@ def export_bulls():
             test.result if test else "",
             test.test_date.isoformat() if test else "",
             "Available" if b.is_rentable_available else (b.rental_unavailable_reason or ""),
-            rental.customer.name if rental else "",
-            rental.start_date.isoformat() if rental else "",
-            rental.end_date.isoformat() if rental else "",
-            rental.status if rental else "",
+            rental.customer.name if show_rental else "",
+            rental.start_date.isoformat() if show_rental else "",
+            rental.end_date.isoformat() if show_rental else "",
+            rental.status if show_rental else "",
         ])
 
     response = Response(output.getvalue(), mimetype="text/csv")
