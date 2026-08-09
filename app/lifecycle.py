@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 from app import db
 from app.models import (
-    Animal, AnimalType, BreedingGroup, ExposureRecord, Location, Rental,
+    Animal, AnimalType, BreedingGroup, CalfRecord, ExposureRecord, Location, Rental,
     RENTAL_ACTIVE, SEMEN_BAD, SEMEN_RETEST, SEX_FEMALE, SEX_MALE,
     TRANSFER_TRIGGER_AGE, TRANSFER_TRIGGER_WEANED,
 )
@@ -88,6 +88,23 @@ def compute_dam_candidate_sires(dam, calving_date):
             for bull in group.bulls:
                 bulls[bull.id] = bull
     return list(bulls.values()), matched_groups
+
+
+def choose_rotating_sire(candidate_sires):
+    """Picks one bull to credit as sire from a dam's candidate pool (the bulls
+    she was actually exposed to). Since a multi-sire pasture makes the true
+    sire unknowable, credit rotates through the pool in a fixed order (by tag/
+    temp ID) based on how many calves have already been credited to any bull
+    in that same pool, so calves recorded from a shared pool spread evenly
+    across its bulls instead of all landing on one."""
+    if not candidate_sires:
+        return None
+    ordered = sorted(candidate_sires, key=lambda b: b.tag_id or b.temp_id or "")
+    if len(ordered) == 1:
+        return ordered[0]
+    candidate_ids = [b.id for b in ordered]
+    prior_count = CalfRecord.query.filter(CalfRecord.sire_id.in_(candidate_ids)).count()
+    return ordered[prior_count % len(ordered)]
 
 
 def generate_temp_id():

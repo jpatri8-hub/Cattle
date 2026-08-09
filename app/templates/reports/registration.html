@@ -13,38 +13,62 @@
   </form>
 </div>
 <p class="text-muted">
-  {{ rows|length }} registered calf/calves from {{ dam_count }} dam(s) in the {{ season_end_year - 1 }}-{{ season_end_year }} calving season (Sept {{ season_end_year - 1 }} - Apr {{ season_end_year }}).
-  Review below, then download and double-check before submitting to the American Angus Association.
+  {{ calves|length }} registered calf/calves from {{ dam_count }} dam(s) in the {{ season_end_year - 1 }}-{{ season_end_year }} calving season (Sept {{ season_end_year - 1 }} - Apr {{ season_end_year }}).
+  Brand numbers are only assigned to calves you select and export below. Already-exported calves stay unchecked by
+  default so a routine export only grabs the new ones - check the box again if you need to re-download one.
 </p>
-<a href="{{ url_for('reports.registration_export', season_end_year=season_end_year) }}" class="btn btn-success mb-3">Download XLSX</a>
 
-<div class="table-responsive">
-<table class="table table-sm bg-white table-compact">
-  <thead>
-    <tr>
-      <th>Calf Tag</th><th>Sex</th><th>Birth Date</th><th>Primary ID</th><th>Secondary ID</th>
-      <th>Twin</th><th>Sire Reg</th><th>Dam Tag</th><th>Dam Reg</th><th>Birth Wt</th><th>Calving Ease</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for r in rows %}
-    <tr>
-      <td>{{ r["CALF TAG"] }}</td>
-      <td>{{ r["SEX*"] }}</td>
-      <td>{{ r["BIRTH DATE*"] }}</td>
-      <td>{{ r["PRIMARY ID*"] }}</td>
-      <td>{{ r["SECONDARY ID"] }}</td>
-      <td>{{ r["TWIN INDICATOR*"] }}</td>
-      <td>{{ r["SIRE REG*"] or "-" }}</td>
-      <td>{{ r["DAM TAG"] }}</td>
-      <td>{{ r["DAM REG*"] or "-" }}</td>
-      <td>{{ r["BIRTH WEIGHT"] or "-" }}</td>
-      <td>{{ r["CALVING EASE"] or "-" }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="11" class="text-muted">No registered calves found for this season.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
+<form method="post" action="{{ url_for('reports.registration_export') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="season_end_year" value="{{ season_end_year }}">
+  <div class="d-flex gap-2 mb-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAllChecks(true)">Select All</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAllChecks(false)">Select None</button>
+    <button type="submit" class="btn btn-success ms-auto">Export Selected to XLSX</button>
+  </div>
+  <div class="table-responsive">
+  <table class="table table-sm bg-white table-compact">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Calf Tag</th><th>Sex</th><th>Birth Date</th><th>Dam Tag</th><th>Dam Reg</th>
+        <th>Birth Wt</th><th>Calving Ease</th><th>Brand #</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in calves %}
+      {% set calf = c.calf_animal %}
+      <tr>
+        <td>
+          <input type="checkbox" class="form-check-input calf-check" name="calf_record_id" value="{{ c.id }}"
+                 {% if not (calf and calf.brand_number) %}checked{% endif %}>
+        </td>
+        <td>{{ calf.display_id if calf else "-" }}</td>
+        <td>{{ "Bull" if c.calf_sex == "male" else "Heifer" }}</td>
+        <td>{{ c.calving_date }}</td>
+        <td>{{ c.dam.display_id if c.dam else "-" }}</td>
+        <td>{{ c.dam.registration_number or "-" if c.dam else "-" }}</td>
+        <td>{{ c.birth_weight or "-" }}</td>
+        <td>{{ c.calving_ease or "-" }}</td>
+        <td>
+          {% if calf and calf.brand_number %}
+          <span class="badge bg-secondary">{{ calf.brand_number }}</span>
+          {% else %}
+          <span class="text-muted small">Not yet assigned</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-muted">No registered calves found for this season.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</form>
+
+<script>
+function setAllChecks(value) {
+  document.querySelectorAll('.calf-check').forEach(function(cb) { cb.checked = value; });
+}
+</script>
 {% endblock %}

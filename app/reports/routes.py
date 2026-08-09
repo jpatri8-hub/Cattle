@@ -1,17 +1,19 @@
 import io
 from datetime import date
 
-from flask import Blueprint, render_template, request, send_file
+from flask import Blueprint, flash, redirect, render_template, request, send_file, url_for
 from flask_login import login_required
 
+from app import db
 from app.decorators import owner_required
 from app.metrics import (
     bull_lifetime_revenue, bulls_culled, calf_performance_by_parent, death_loss_rate,
     feedout_rollup_by_parent, net_margin_by_type, pregnancy_rate, weaning_rate,
 )
-from app.models import Animal, SEX_MALE
+from app.models import Animal, CalfRecord, SEX_MALE
 from app.reports.registration import (
-    build_registration_workbook, default_season_end_year, registration_report_rows,
+    assign_brand_numbers, build_registration_workbook, default_season_end_year,
+    eligible_calf_records,
 )
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
@@ -64,17 +66,26 @@ def calf_performance():
 @reports_bp.route("/registration")
 def registration():
     season_end_year = request.args.get("season_end_year", default_season_end_year(), type=int)
-    rows = registration_report_rows(season_end_year)
-    dam_count = len({r["DAM TAG"] for r in rows})
+    calves = eligible_calf_records(season_end_year)
+    dam_count = len({c.dam_id for c in calves})
     return render_template(
-        "reports/registration.html", rows=rows, season_end_year=season_end_year, dam_count=dam_count,
+        "reports/registration.html", calves=calves, season_end_year=season_end_year, dam_count=dam_count,
     )
 
 
-@reports_bp.route("/registration/export")
+@reports_bp.route("/registration/export", methods=["POST"])
 def registration_export():
-    season_end_year = request.args.get("season_end_year", default_season_end_year(), type=int)
-    wb = build_registration_workbook(season_end_year)
+    season_end_year = request.form.get("season_end_year", default_season_end_year(), type=int)
+    selected_ids = {int(i) for i in request.form.getlist("calf_record_id")}
+    if not selected_ids:
+        flash("Select at least one calf to export first.", "warning")
+        return redirect(url_for("reports.registration", season_end_year=season_end_year))
+
+    calves = CalfRecord.query.filter(CalfRecord.id.in_(selected_ids)).all()
+    assign_brand_numbers(calves)
+    db.session.commit()
+
+    wb = build_registration_workbook(season_end_year, selected_ids)
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
