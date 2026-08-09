@@ -4,7 +4,7 @@
 <h2 class="mb-3">Feedlot / Butcher Calves</h2>
 <div class="table-responsive">
 <table class="table table-sm bg-white align-middle">
-  <thead><tr><th>Animal</th><th>Start</th><th>Start Age/Wt</th><th>Days on Feed</th><th>Hanging Wt</th><th>Yield %</th><th>Grade</th><th>Est. ADG</th></tr></thead>
+  <thead><tr><th>Animal</th><th>Start</th><th>Start Age/Wt</th><th>Days on Feed</th><th>Live Wt</th><th>Yield</th><th>Yield %</th><th>Grade</th><th>ADG</th></tr></thead>
   <tbody>
     {% for f in records %}
     <tr>
@@ -12,13 +12,14 @@
       <td>{{ f.start_date }}</td>
       <td>{{ f.start_age_display or "-" }} / {{ f.start_weight or "-" }} lbs</td>
       <td>{{ f.days_on_feed or "-" }}</td>
-      <td>{{ f.hanging_weight or "-" }}</td>
-      <td>{{ f.dressed_yield_pct or "-" }}</td>
+      <td>{{ f.live_weight or "-" }}</td>
+      <td>{{ f.yield_weight or "-" }}</td>
+      <td>{{ "%.1f"|format(f.yield_pct) if f.yield_pct else "-" }}</td>
       <td>{{ f.steak_grade or "-" }}</td>
       <td>{{ "%.2f"|format(f.average_daily_gain) if f.average_daily_gain else "-" }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="8" class="text-muted">No feedout records yet.</td></tr>
+    <tr><td colspan="9" class="text-muted">No feedout records yet.</td></tr>
     {% endfor %}
   </tbody>
 </table>

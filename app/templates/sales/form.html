@@ -2,11 +2,15 @@
 {% block title %}Record Sale - Cattle Manager{% endblock %}
 {% block content %}
 <h2>Record Sale</h2>
-<p class="text-muted">Check off the animals included in this sale, then enter one <strong>total weight</strong> and <strong>total sale price</strong> per animal type - the app splits it evenly across the animals of that type you checked. Works the same way for a single animal (just check the one) or a full truckload.</p>
+<p class="text-muted" id="truckloadHint">Check off the animals included in this sale, then enter one <strong>total weight</strong> and <strong>total sale price</strong> per animal type - the app splits it evenly across the animals of that type you checked.</p>
+<p class="text-muted" id="perAnimalHint">Check off the animals included in this sale and enter a price (and weight, optional) for each one.</p>
 <form method="post" class="card card-dashboard p-4" novalidate>
   {{ form.hidden_tag() }}
   <div class="row">
-    <div class="col-md-4 mb-3">{{ form.sale_category_id.label(class="form-label") }} {{ form.sale_category_id(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">
+      {{ form.sale_category_id.label(class="form-label") }}
+      {{ form.sale_category_id(class="form-select", id="categorySelect", onchange="toggleSaleMode()") }}
+    </div>
     <div class="col-md-4 mb-3">
       {{ form.buyer_id.label(class="form-label") }}
       <div class="input-group">
@@ -20,36 +24,79 @@
   </div>
 
   <h5 class="mt-2">Animals in this Sale</h5>
-  {% for atype, type_animals in animals_by_type.items() %}
-  <div class="card card-dashboard p-3 mb-3">
-    <div class="row g-2 align-items-end mb-2">
-      <div class="col-auto"><strong>{{ atype.name if atype else "Unknown type" }}</strong></div>
-      <div class="col-auto">
-        <label class="form-label small mb-0">Total Weight (lbs)</label>
-        <input type="number" step="0.01" class="form-control form-control-sm" name="total_weight_{{ atype.id if atype else 0 }}">
-      </div>
-      <div class="col-auto">
-        <label class="form-label small mb-0">Total Sale Price ($)</label>
-        <input type="number" step="0.01" class="form-control form-control-sm" name="total_price_{{ atype.id if atype else 0 }}">
-      </div>
-      <div class="col-auto text-muted small">Split evenly across every animal of this type checked below.</div>
-    </div>
-    <div class="row row-cols-2 row-cols-md-4 g-1">
-      {% for a in type_animals %}
-      <div class="col">
-        <div class="form-check">
-          <input type="checkbox" class="form-check-input" name="animal_ids" value="{{ a.id }}" id="an{{ a.id }}" {% if a.id in preselected %}checked{% endif %}>
-          <label class="form-check-label" for="an{{ a.id }}">{{ a.display_id }} <small class="text-muted">({{ a.location.display_name if a.location else "-" }})</small></label>
+
+  <div id="truckloadBlock">
+    {% for atype, type_animals in animals_by_type.items() %}
+    <div class="card card-dashboard p-3 mb-3">
+      <div class="row g-2 align-items-end mb-2">
+        <div class="col-auto"><strong>{{ atype.name if atype else "Unknown type" }}</strong></div>
+        <div class="col-auto">
+          <label class="form-label small mb-0">Total Weight (lbs)</label>
+          <input type="number" step="0.01" class="form-control form-control-sm" name="total_weight_{{ atype.id if atype else 0 }}">
         </div>
+        <div class="col-auto">
+          <label class="form-label small mb-0">Total Sale Price ($)</label>
+          <input type="number" step="0.01" class="form-control form-control-sm" name="total_price_{{ atype.id if atype else 0 }}">
+        </div>
+        <div class="col-auto text-muted small">Split evenly across every animal of this type checked below.</div>
       </div>
-      {% endfor %}
+      <div class="row row-cols-2 row-cols-md-4 g-1">
+        {% for a in type_animals %}
+        <div class="col">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="animal_ids" value="{{ a.id }}" id="tl-an{{ a.id }}" {% if a.id in preselected %}checked{% endif %}>
+            <label class="form-check-label" for="tl-an{{ a.id }}">{{ a.display_id }} <small class="text-muted">({{ a.location.display_name if a.location else "-" }})</small></label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
     </div>
+    {% else %}
+    <p class="text-muted">No animals currently on farm.</p>
+    {% endfor %}
   </div>
-  {% else %}
-  <p class="text-muted">No animals currently on farm.</p>
-  {% endfor %}
+
+  <div id="perAnimalBlock" style="display:none;">
+    {% for atype, type_animals in animals_by_type.items() %}
+    <div class="card card-dashboard p-3 mb-3">
+      <strong>{{ atype.name if atype else "Unknown type" }}</strong>
+      <table class="table table-sm mb-0 mt-2">
+        <thead><tr><th></th><th>ID</th><th>Location</th><th>Price ($)</th><th>Weight (lbs)</th></tr></thead>
+        <tbody>
+          {% for a in type_animals %}
+          <tr>
+            <td><input type="checkbox" name="animal_ids" value="{{ a.id }}" id="pa-an{{ a.id }}" {% if a.id in preselected %}checked{% endif %}></td>
+            <td><label for="pa-an{{ a.id }}">{{ a.display_id }}</label></td>
+            <td>{{ a.location.display_name if a.location else "-" }}</td>
+            <td><input type="number" step="0.01" class="form-control form-control-sm" name="price_{{ a.id }}"></td>
+            <td><input type="number" step="0.01" class="form-control form-control-sm" name="weight_{{ a.id }}" value="{{ a.current_weight or '' }}"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted">No animals currently on farm.</p>
+    {% endfor %}
+  </div>
 
   {{ form.submit(class="btn btn-success") }}
   <a href="{{ url_for('sales.list_sales') }}" class="btn btn-link">Cancel</a>
 </form>
+
+<script>
+function toggleSaleMode() {
+  var select = document.getElementById('categorySelect');
+  var isTruckload = select.value === "{{ truckload_category_id or '' }}" && select.value !== "";
+  var truckloadBlock = document.getElementById('truckloadBlock');
+  var perAnimalBlock = document.getElementById('perAnimalBlock');
+  document.getElementById('truckloadHint').style.display = isTruckload ? '' : 'none';
+  document.getElementById('perAnimalHint').style.display = isTruckload ? 'none' : '';
+  truckloadBlock.style.display = isTruckload ? '' : 'none';
+  perAnimalBlock.style.display = isTruckload ? 'none' : '';
+  truckloadBlock.querySelectorAll('input').forEach(function (el) { el.disabled = !isTruckload; });
+  perAnimalBlock.querySelectorAll('input').forEach(function (el) { el.disabled = isTruckload; });
+}
+document.addEventListener('DOMContentLoaded', toggleSaleMode);
+</script>
 {% endblock %}

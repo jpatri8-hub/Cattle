@@ -51,20 +51,18 @@ SEMEN_RESULT_CHOICES = [SEMEN_GOOD, SEMEN_BAD, SEMEN_RETEST]
 
 HEALTH_STATUS_CHOICES = ["Healthy", "Sick", "Injured", "Other"]
 
-CALF_OUTCOME_ACTIVE = "active"
-CALF_OUTCOME_LOST = "lost"
-CALF_OUTCOME_DIED_AFTER_BIRTH = "died_after_birth"
-CALF_OUTCOME_CULLED = "culled"
-CALF_OUTCOME_RETAINED = "retained"
-CALF_OUTCOME_SOLD = "sold"
-CALF_OUTCOME_CHOICES = [
-    (CALF_OUTCOME_ACTIVE, "Active (still with dam / on farm)"),
-    (CALF_OUTCOME_LOST, "Lost calf (aborted / stillborn)"),
-    (CALF_OUTCOME_DIED_AFTER_BIRTH, "Died after birth"),
-    (CALF_OUTCOME_CULLED, "Culled"),
-    (CALF_OUTCOME_RETAINED, "Retained (kept as breeding stock)"),
-    (CALF_OUTCOME_SOLD, "Sold (not a cull)"),
+CALF_QUALITY_SCALE = {"Good": 3, "Average": 2, "Poor": 1}
+CALF_QUALITY_CHOICES = ["Good", "Average", "Poor"]
+
+CALVING_EASE_CHOICES = [
+    (1, "1 - No Assistance"),
+    (2, "2 - Some Assistance"),
+    (3, "3 - Mechanical Assistance"),
+    (4, "4 - Cesarean Section"),
+    (5, "5 - Abnormal Delivery"),
 ]
+
+BRAND_TYPE_CHOICES = ["Hot Brand", "Freeze Brand"]
 
 GRADE_SCALE = {"Prime": 4, "Choice": 3, "Select": 2, "Standard": 1}
 STEAK_GRADE_CHOICES = ["Prime", "Choice", "Select", "Standard", "Other"]
@@ -176,6 +174,8 @@ class Animal(db.Model):
     notes = db.Column(db.Text)
 
     registration_number = db.Column(db.String(80))
+    brand_type = db.Column(db.String(20))  # Hot Brand / Freeze Brand
+    brand_number = db.Column(db.String(20), unique=True, index=True)
 
     sire_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
     dam_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
@@ -337,6 +337,21 @@ class Animal(db.Model):
     def is_rentable_available(self):
         return self.is_bull and self.is_active and self.rental_unavailable_reason is None
 
+    @property
+    def has_calf_at_side(self):
+        return any(
+            c.weaned_date is None and c.calf_animal and c.calf_animal.is_active
+            for c in self.calf_records_as_dam
+        )
+
+    @property
+    def is_low_birth_weight_candidate(self):
+        if not self.is_bull or not self.epd:
+            return False
+        ced = self.epd.ced
+        bw = self.epd.birth_weight_epd
+        return ced is not None and bw is not None and ced >= 5 and bw <= 1
+
     def __repr__(self):
         return f"<Animal {self.display_id}>"
 
@@ -444,18 +459,24 @@ class CalfRecord(db.Model):
     calf_sex = db.Column(db.String(10))
     birth_weight = db.Column(db.Numeric(7, 2))
     calf_animal_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
-    weaned_date = db.Column(db.Date)
+    calving_ease = db.Column(db.Integer)  # 1-5, see CALVING_EASE_CHOICES
 
-    outcome = db.Column(db.String(20), nullable=False, default=CALF_OUTCOME_ACTIVE)
-    cull_reason = db.Column(db.String(255))
-    notes = db.Column(db.Text)
+    weaned_date = db.Column(db.Date)
+    weaning_weight = db.Column(db.Numeric(7, 2))
+    quality = db.Column(db.String(10))  # Good / Average / Poor, see CALF_QUALITY_SCALE
 
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     sire = db.relationship("Animal", foreign_keys=[sire_id])
     breeding_group = db.relationship("BreedingGroup")
-    calf_animal = db.relationship("Animal", foreign_keys=[calf_animal_id])
+    calf_animal = db.relationship("Animal", foreign_keys=[calf_animal_id], backref=db.backref("calf_record", uselist=False))
+
+    @property
+    def weaning_age_days(self):
+        if self.weaned_date and self.calving_date:
+            return (self.weaned_date - self.calving_date).days
+        return None
 
 
 class Rental(db.Model):
@@ -516,10 +537,9 @@ class FeedoutRecord(db.Model):
 
     start_date = db.Column(db.Date, nullable=False, default=date.today)
     start_weight = db.Column(db.Numeric(7, 2))
-    days_on_feed = db.Column(db.Integer)
     end_date = db.Column(db.Date)
-    hanging_weight = db.Column(db.Numeric(7, 2))
-    dressed_yield_pct = db.Column(db.Numeric(5, 2))
+    live_weight = db.Column(db.Numeric(7, 2))  # weight at slaughter
+    yield_weight = db.Column(db.Numeric(7, 2))  # carcass/hanging weight, manually entered
     steak_grade = db.Column(db.String(20))
     notes = db.Column(db.Text)
 
@@ -536,16 +556,22 @@ class FeedoutRecord(db.Model):
         return f"{years}y {months}m" if years else f"{months}m"
 
     @property
-    def estimated_finish_weight(self):
-        if self.hanging_weight and self.dressed_yield_pct:
-            return self.hanging_weight / (self.dressed_yield_pct / 100)
+    def days_on_feed(self):
+        if self.start_date and self.end_date:
+            return (self.end_date - self.start_date).days
+        return None
+
+    @property
+    def yield_pct(self):
+        if self.yield_weight and self.live_weight:
+            return self.yield_weight / self.live_weight * 100
         return None
 
     @property
     def average_daily_gain(self):
-        finish = self.estimated_finish_weight
-        if finish and self.start_weight and self.days_on_feed:
-            return (finish - self.start_weight) / self.days_on_feed
+        days = self.days_on_feed
+        if self.live_weight and self.start_weight and days:
+            return (self.live_weight - self.start_weight) / days
         return None
 
 

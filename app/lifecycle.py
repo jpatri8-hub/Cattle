@@ -97,6 +97,31 @@ def generate_temp_id():
     return f"{prefix}-{count + 1:04d}"
 
 
+def generate_brand_number(calving_date):
+    """Ranch calving seasons run September-April and are named for the
+    season's ending year (e.g. the 2026-2027 season starts Sept 2026), so
+    the brand-number prefix is that ending year's last two digits, followed
+    by a sequential 2-digit number restarting at 01 each season."""
+    if calving_date.month >= 9:
+        season_end_year = calving_date.year + 1
+    else:
+        season_end_year = calving_date.year
+    prefix = f"{season_end_year % 100:02d}"
+    existing = Animal.query.filter(Animal.brand_number.like(f"{prefix}%")).count()
+    return f"{prefix}{existing + 1:02d}"
+
+
+def compute_calf_type(dam, calf_sex):
+    """Registered Angus cows/heifers produce Registered Angus calves;
+    Commercial cows/heifers produce Commercial calves. Returns the matching
+    AnimalType, or None if no such type is configured under Admin."""
+    if not dam.animal_type:
+        return None
+    family = "Registered Angus" if "Registered Angus" in dam.animal_type.name else "Commercial"
+    suffix = "Bull Calf" if calf_sex == SEX_MALE else "Heifer Calf"
+    return AnimalType.query.filter_by(name=f"{family} {suffix}").first()
+
+
 def apply_age_transfers(commit=True):
     """Moves animals into their next type once they hit the configured age.
     e.g. Registered Angus Bull Calf -> Registered Angus Bull at 12 months."""

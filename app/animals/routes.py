@@ -7,16 +7,17 @@ from app import db
 from app.decorators import owner_required
 from app.forms import (
     AddToBreedingGroupForm, AnimalForm, BreedingGroupForm, BulkLocationForm,
-    BulkVaccinationForm, CalfBirthForm, CalfOutcomeForm, CastrationForm,
+    BulkVaccinationForm, CalfBirthForm, CalfQualityForm, CastrationForm,
     ConfirmBredForm, DepartureForm, FeedoutForm, HealthRecordForm, ImportCSVForm,
     LastSeenCheckForm, SemenTestForm, WeightRecordForm, BullEPDForm,
 )
 from app.lifecycle import (
     apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
-    compute_dam_candidate_sires, generate_temp_id, inbreeding_warnings,
+    compute_calf_type, compute_dam_candidate_sires, generate_brand_number,
+    generate_temp_id, inbreeding_warnings,
 )
 from app.models import (
-    Animal, AnimalType, BreedingGroup, BullEPD, CALF_OUTCOME_ACTIVE, CalfRecord,
+    Animal, AnimalType, BreedingGroup, BullEPD, CALVING_EASE_CHOICES, CalfRecord,
     ExposureRecord, FeedoutRecord, HealthRecord, LastSeenCheck,
     Location, RENTAL_ACTIVE, RENTAL_BOOKED, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
 )
@@ -85,7 +86,7 @@ def list_animals():
     animals = query.order_by(Animal.tag_id).all()
 
     if has_calf:
-        animals = [a for a in animals if any(c.outcome == CALF_OUTCOME_ACTIVE for c in a.calf_records_as_dam)]
+        animals = [a for a in animals if a.has_calf_at_side]
     if flagged:
         animals = [a for a in animals if a.not_seen_flagged]
 
@@ -114,7 +115,6 @@ def view_animal(animal_id):
         calf_form = CalfBirthForm(calving_date=date.today())
         calf_form.birth_location_id.choices = _location_choices()
         calf_form.birth_location_id.data = animal.location_id or 0
-        calf_form.animal_type_id.choices = _type_choices()
 
     castration_form = None
     if animal.sex == SEX_MALE:
@@ -128,10 +128,17 @@ def view_animal(animal_id):
 
     feedout_form = FeedoutForm(start_date=date.today())
 
+    quality_form = None
+    calving_ease_label = None
+    if animal.calf_record:
+        quality_form = CalfQualityForm(quality=animal.calf_record.quality or "")
+        calving_ease_label = dict(CALVING_EASE_CHOICES).get(animal.calf_record.calving_ease, "Not recorded")
+
     return render_template(
         "animals/detail.html", animal=animal, weight_form=weight_form, health_form=health_form,
         last_seen_form=last_seen_form, calf_form=calf_form, castration_form=castration_form,
         epd_form=epd_form, semen_form=semen_form, feedout_form=feedout_form,
+        quality_form=quality_form, calving_ease_label=calving_ease_label,
         departure_form=DepartureForm(departure_date=date.today()),
         inbreeding_check_url=url_for("animals.list_breeding_groups"),
     )
@@ -149,8 +156,11 @@ def new_animal():
 
     if form.validate_on_submit():
         tag = (form.tag_id.data or "").strip() or None
+        brand_number = (form.brand_number.data or "").strip() or None
         if tag and Animal.query.filter_by(tag_id=tag).first():
             flash("An animal with that tag/ID already exists.", "danger")
+        elif brand_number and Animal.query.filter_by(brand_number=brand_number).first():
+            flash("An animal with that brand number already exists.", "danger")
         else:
             atype = AnimalType.query.get(form.animal_type_id.data)
             animal = Animal(
@@ -166,6 +176,8 @@ def new_animal():
                 sire_id=form.sire_id.data or None,
                 dam_id=form.dam_id.data or None,
                 registration_number=form.registration_number.data,
+                brand_type=form.brand_type.data or None,
+                brand_number=form.brand_number.data or None,
                 notes=form.notes.data,
                 created_by_id=current_user.id,
             )
@@ -202,9 +214,13 @@ def edit_animal(animal_id):
 
     if form.validate_on_submit():
         tag = (form.tag_id.data or "").strip() or None
+        brand_number = (form.brand_number.data or "").strip() or None
         existing = Animal.query.filter_by(tag_id=tag).first() if tag else None
+        existing_brand = Animal.query.filter_by(brand_number=brand_number).first() if brand_number else None
         if existing and existing.id != animal.id:
             flash("An animal with that tag/ID already exists.", "danger")
+        elif existing_brand and existing_brand.id != animal.id:
+            flash("An animal with that brand number already exists.", "danger")
         else:
             atype = AnimalType.query.get(form.animal_type_id.data)
             animal.tag_id = tag
@@ -218,6 +234,8 @@ def edit_animal(animal_id):
             animal.sire_id = form.sire_id.data or None
             animal.dam_id = form.dam_id.data or None
             animal.registration_number = form.registration_number.data
+            animal.brand_type = form.brand_type.data or None
+            animal.brand_number = form.brand_number.data or None
             animal.notes = form.notes.data
 
             if current_user.is_owner:
@@ -471,16 +489,25 @@ def record_calf(cow_id):
     dam = Animal.query.get_or_404(cow_id)
     form = CalfBirthForm()
     form.birth_location_id.choices = _location_choices()
-    form.animal_type_id.choices = _type_choices()
 
     if form.validate_on_submit():
+        calf_type = compute_calf_type(dam, form.calf_sex.data)
+        if not calf_type:
+            flash(
+                "Could not figure out the calf's type - make sure a matching "
+                "\"Registered Angus/Commercial Bull/Heifer Calf\" type exists under Admin.",
+                "danger",
+            )
+            return redirect(url_for("animals.view_animal", animal_id=dam.id))
+
         birth_location_id = form.birth_location_id.data or dam.location_id
         calf = Animal(
             temp_id=generate_temp_id(),
-            animal_type_id=form.animal_type_id.data,
+            animal_type_id=calf_type.id,
             sex=form.calf_sex.data,
             birth_date=form.calving_date.data,
             birth_weight=form.birth_weight.data,
+            brand_number=generate_brand_number(form.calving_date.data),
             location_id=dam.location_id,
             birth_location_id=birth_location_id,
             dam_id=dam.id,
@@ -506,14 +533,13 @@ def record_calf(cow_id):
             calf_sex=form.calf_sex.data,
             birth_weight=form.birth_weight.data,
             calf_animal_id=calf.id,
-            outcome=CALF_OUTCOME_ACTIVE,
-            notes=form.notes.data,
+            calving_ease=form.calving_ease.data or None,
             created_by_id=current_user.id,
         )
         db.session.add(record)
         db.session.commit()
 
-        msg = f"Calf recorded for {dam.display_id} (temp ID {calf.temp_id})."
+        msg = f"Calf recorded for {dam.display_id} ({calf_type.name}, temp ID {calf.temp_id}, brand {calf.brand_number})."
         if candidate_sires:
             msg += f" Candidate sire(s): {', '.join(b.display_id for b in candidate_sires)}."
         else:
@@ -524,39 +550,23 @@ def record_calf(cow_id):
     return redirect(url_for("animals.view_animal", animal_id=dam.id))
 
 
-@animals_bp.route("/calf/<int:calf_record_id>/outcome", methods=["POST"])
+@animals_bp.route("/calf/<int:calf_record_id>/quality", methods=["POST"])
 @login_required
-def update_calf_outcome(calf_record_id):
+def update_calf_quality(calf_record_id):
     record = CalfRecord.query.get_or_404(calf_record_id)
-    form = CalfOutcomeForm()
+    form = CalfQualityForm()
+    redirect_to = record.calf_animal_id or record.dam_id
     if form.validate_on_submit():
-        record.outcome = form.outcome.data
-        record.cull_reason = form.cull_reason.data
-        record.notes = form.notes.data
+        record.quality = form.quality.data or None
+        record.weaning_weight = form.weaning_weight.data
         if form.weaned_date.data:
             record.weaned_date = form.weaned_date.data
             apply_weaning_transfer(record)
-
-        if record.calf_animal:
-            from app.models import (
-                CALF_OUTCOME_CULLED, CALF_OUTCOME_DIED_AFTER_BIRTH, CALF_OUTCOME_LOST,
-                DEPARTURE_CULLED, DEPARTURE_DECEASED, DEPARTURE_LOST,
-            )
-            departure_map = {
-                CALF_OUTCOME_LOST: DEPARTURE_LOST,
-                CALF_OUTCOME_DIED_AFTER_BIRTH: DEPARTURE_DECEASED,
-                CALF_OUTCOME_CULLED: DEPARTURE_CULLED,
-            }
-            if record.outcome in departure_map:
-                record.calf_animal.is_active = False
-                record.calf_animal.departure_reason = departure_map[record.outcome]
-                record.calf_animal.departure_date = record.weaned_date or date.today()
-
         db.session.commit()
-        flash("Calf outcome updated.", "success")
+        flash("Calf record updated.", "success")
     else:
-        flash("Could not update outcome - check the form.", "danger")
-    return redirect(url_for("animals.view_animal", animal_id=record.dam_id))
+        flash("Could not update the calf record - check the form.", "danger")
+    return redirect(url_for("animals.view_animal", animal_id=redirect_to))
 
 
 # ---------------------------------------------------------------- Breeding groups --
@@ -681,8 +691,11 @@ def record_castration(animal_id):
 @animals_bp.route("/bulls")
 @login_required
 def list_bulls():
+    low_bw = request.args.get("low_bw") == "1"
     bulls = [a for a in Animal.query.filter_by(is_active=True, sex=SEX_MALE).order_by(Animal.tag_id).all() if a.is_bull]
-    return render_template("animals/bulls_list.html", bulls=bulls)
+    if low_bw:
+        bulls = [b for b in bulls if b.is_low_birth_weight_candidate]
+    return render_template("animals/bulls_list.html", bulls=bulls, low_bw=low_bw)
 
 
 @animals_bp.route("/bulls/export")
@@ -801,8 +814,7 @@ def add_feedout(animal_id):
     if form.validate_on_submit():
         db.session.add(FeedoutRecord(
             animal_id=animal.id, start_date=form.start_date.data, start_weight=form.start_weight.data,
-            days_on_feed=form.days_on_feed.data, end_date=form.end_date.data,
-            hanging_weight=form.hanging_weight.data, dressed_yield_pct=form.dressed_yield_pct.data,
+            end_date=form.end_date.data, live_weight=form.live_weight.data, yield_weight=form.yield_weight.data,
             steak_grade=form.steak_grade.data or None, notes=form.notes.data, created_by_id=current_user.id,
         ))
         db.session.commit()

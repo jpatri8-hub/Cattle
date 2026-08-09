@@ -12,7 +12,7 @@
       <td>{{ c.animal_type.name if c.animal_type else "-" }}</td>
       <td>{{ c.age_display }}</td>
       <td>{{ c.location.display_name if c.location else "-" }}</td>
-      <td>{% if c.calf_records_as_dam|selectattr('outcome','equalto','active')|list %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}</td>
+      <td>{% if c.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}</td>
       <td>{% if c.exposure_records %}<span class="badge bg-info text-dark">Yes</span>{% else %}-{% endif %}</td>
     </tr>
     {% else %}
