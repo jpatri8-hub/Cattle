@@ -7,8 +7,8 @@ from wtforms import (
 from wtforms.validators import DataRequired, Email, Length, NumberRange, Optional
 
 from app.models import (
-    CALF_OUTCOME_CHOICES, CONDITION_SCORE_CHOICES, DEPARTURE_CHOICES,
-    HEALTH_STATUS_CHOICES, RENTAL_STATUS_CHOICES, ROLES, SEMEN_RESULT_CHOICES,
+    BRAND_TYPE_CHOICES, CALF_QUALITY_CHOICES, CALVING_EASE_CHOICES, CONDITION_SCORE_CHOICES,
+    DEPARTURE_CHOICES, HEALTH_STATUS_CHOICES, RENTAL_STATUS_CHOICES, ROLES, SEMEN_RESULT_CHOICES,
     SEX_CHOICES, STEAK_GRADE_CHOICES, TRANSFER_TRIGGER_CHOICES,
 )
 
@@ -76,6 +76,8 @@ class AnimalForm(FlaskForm):
     sire_id = SelectField("Sire (known/actual)", coerce=int, validators=[Optional()])
     dam_id = SelectField("Dam (known/actual)", coerce=int, validators=[Optional()])
     registration_number = StringField("Registration Number", validators=[Optional(), Length(max=80)])
+    brand_type = SelectField("Brand Type", choices=[("", "-- None --")] + [(b, b) for b in BRAND_TYPE_CHOICES], validators=[Optional()])
+    brand_number = StringField("Brand Number", validators=[Optional(), Length(max=20)])
     purchase_date = DateField("Purchase Date", validators=[Optional()])
     purchase_price = DecimalField("Purchase Price", validators=[Optional()], places=2)
     notes = TextAreaField("Notes", validators=[Optional()])
@@ -155,17 +157,19 @@ class CalfBirthForm(FlaskForm):
     calf_sex = SelectField("Calf Sex", choices=[(s, s.capitalize()) for s in SEX_CHOICES], validators=[DataRequired()])
     birth_weight = DecimalField("Birth Weight (lbs)", validators=[Optional()], places=2)
     birth_location_id = SelectField("Birth Location", coerce=int, validators=[Optional()])
-    animal_type_id = SelectField("Calf Type", coerce=int, validators=[DataRequired()])
+    calving_ease = SelectField("Calving Ease", coerce=int, choices=CALVING_EASE_CHOICES, validators=[Optional()])
     notes = TextAreaField("Notes", validators=[Optional()])
     submit = SubmitField("Record Calf")
 
 
-class CalfOutcomeForm(FlaskForm):
-    outcome = SelectField("Outcome", choices=CALF_OUTCOME_CHOICES, validators=[DataRequired()])
-    cull_reason = StringField("Cull Reason", validators=[Optional(), Length(max=255)])
-    weaned_date = DateField("Weaned Date", validators=[Optional()])
-    notes = TextAreaField("Notes", validators=[Optional()])
-    submit = SubmitField("Update Outcome")
+class CalfQualityForm(FlaskForm):
+    weaned_date = DateField("Weaned Date (date the calf stopped nursing)", validators=[Optional()])
+    weaning_weight = DecimalField("Weaning Weight (lbs)", validators=[Optional()], places=2)
+    quality = SelectField(
+        "Calf Quality", choices=[("", "-- Not rated --")] + [(q, q) for q in CALF_QUALITY_CHOICES],
+        validators=[Optional()],
+    )
+    submit = SubmitField("Save")
 
 
 class BreedingGroupForm(FlaskForm):
@@ -247,10 +251,9 @@ class RentalStatusForm(FlaskForm):
 class FeedoutForm(FlaskForm):
     start_date = DateField("Start Feeding Date", validators=[DataRequired()])
     start_weight = DecimalField("Starting Weight (lbs)", validators=[Optional()], places=2)
-    days_on_feed = IntegerField("Days on Feed", validators=[Optional(), NumberRange(min=0)])
     end_date = DateField("Slaughter Date", validators=[Optional()])
-    hanging_weight = DecimalField("Hanging Weight (lbs)", validators=[Optional()], places=2)
-    dressed_yield_pct = DecimalField("Dressed Yield %", validators=[Optional()], places=2)
+    live_weight = DecimalField("Live Weight at Slaughter (lbs)", validators=[Optional()], places=2)
+    yield_weight = DecimalField("Yield (carcass weight, lbs)", validators=[Optional()], places=2)
     steak_grade = SelectField("Steak Grade", choices=[("", "-- Not graded yet --")] + [(g, g) for g in STEAK_GRADE_CHOICES], validators=[Optional()])
     notes = TextAreaField("Notes", validators=[Optional()])
     submit = SubmitField("Save Feedout Record")

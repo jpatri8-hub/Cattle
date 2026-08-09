@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Registration Report - Cattle Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2 class="mb-0">American Angus Registration Report</h2>
+  <form class="d-flex gap-2 align-items-center" method="get">
+    <label class="form-label mb-0 small">Season:</label>
+    <select name="season_end_year" class="form-select" onchange="this.form.submit()">
+      {% for y in range(season_end_year + 2, season_end_year - 4, -1) %}
+      <option value="{{ y }}" {% if y == season_end_year %}selected{% endif %}>{{ y - 1 }}-{{ y }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+<p class="text-muted">
+  {{ rows|length }} registered calf/calves from {{ dam_count }} dam(s) in the {{ season_end_year - 1 }}-{{ season_end_year }} calving season (Sept {{ season_end_year - 1 }} - Apr {{ season_end_year }}).
+  Review below, then download and double-check before submitting to the American Angus Association.
+</p>
+<a href="{{ url_for('reports.registration_export', season_end_year=season_end_year) }}" class="btn btn-success mb-3">Download XLSX</a>
+
+<div class="table-responsive">
+<table class="table table-sm bg-white table-compact">
+  <thead>
+    <tr>
+      <th>Calf Tag</th><th>Sex</th><th>Birth Date</th><th>Primary ID</th><th>Secondary ID</th>
+      <th>Twin</th><th>Sire Reg</th><th>Dam Tag</th><th>Dam Reg</th><th>Birth Wt</th><th>Calving Ease</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r["CALF TAG"] }}</td>
+      <td>{{ r["SEX*"] }}</td>
+      <td>{{ r["BIRTH DATE*"] }}</td>
+      <td>{{ r["PRIMARY ID*"] }}</td>
+      <td>{{ r["SECONDARY ID"] }}</td>
+      <td>{{ r["TWIN INDICATOR*"] }}</td>
+      <td>{{ r["SIRE REG*"] or "-" }}</td>
+      <td>{{ r["DAM TAG"] }}</td>
+      <td>{{ r["DAM REG*"] or "-" }}</td>
+      <td>{{ r["BIRTH WEIGHT"] or "-" }}</td>
+      <td>{{ r["CALVING EASE"] or "-" }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="text-muted">No registered calves found for this season.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

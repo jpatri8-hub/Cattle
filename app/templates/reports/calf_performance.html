@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Calf Performance - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-3">Calf Performance by Parent</h2>
+<p class="text-muted">Average weaning weight, average age at weaning (days), and average calf quality (Good=3, Average=2, Poor=1), rolled up by sire and by dam.</p>
+<div class="row">
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>By Sire</h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Sire</th><th>Calves</th><th>Avg Weaning Wt</th><th>Avg Weaning Age (days)</th><th>Avg Quality</th></tr></thead>
+        <tbody>
+          {% for r in by_sire %}
+          <tr>
+            <td><a href="{{ url_for('animals.view_animal', animal_id=r.parent.id) }}">{{ r.parent.display_id }}</a></td>
+            <td>{{ r.count }}</td>
+            <td>{{ r.avg_weaning_weight if r.avg_weaning_weight is not none else "-" }}</td>
+            <td>{{ r.avg_weaning_age_days if r.avg_weaning_age_days is not none else "-" }}</td>
+            <td>{{ r.avg_quality_score if r.avg_quality_score is not none else "-" }}</td>
+          </tr>
+          {% else %}<tr><td colspan="5" class="text-muted">No calf records with a known sire yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6 mb-4">
+    <div class="card card-dashboard p-3">
+      <h5>By Dam</h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Dam</th><th>Calves</th><th>Avg Weaning Wt</th><th>Avg Weaning Age (days)</th><th>Avg Quality</th></tr></thead>
+        <tbody>
+          {% for r in by_dam %}
+          <tr>
+            <td><a href="{{ url_for('animals.view_animal', animal_id=r.parent.id) }}">{{ r.parent.display_id }}</a></td>
+            <td>{{ r.count }}</td>
+            <td>{{ r.avg_weaning_weight if r.avg_weaning_weight is not none else "-" }}</td>
+            <td>{{ r.avg_weaning_age_days if r.avg_weaning_age_days is not none else "-" }}</td>
+            <td>{{ r.avg_quality_score if r.avg_quality_score is not none else "-" }}</td>
+          </tr>
+          {% else %}<tr><td colspan="5" class="text-muted">No calf records with a known dam yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

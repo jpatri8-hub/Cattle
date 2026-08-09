@@ -17,6 +17,7 @@ DEFAULT_TYPES = [
     ("Registered Angus Bull", SEX_MALE, None, None, None),
     ("Registered Angus Heifer", SEX_FEMALE, TRANSFER_TRIGGER_WEANED, None, "Registered Angus Cow"),
     ("Registered Angus Bull Calf", SEX_MALE, TRANSFER_TRIGGER_AGE, 12, "Registered Angus Bull"),
+    ("Registered Angus Heifer Calf", SEX_FEMALE, None, None, None),
     ("Commercial Cow", SEX_FEMALE, None, None, None),
     ("Commercial Bull", SEX_MALE, None, None, None),
     ("Commercial Heifer", SEX_FEMALE, TRANSFER_TRIGGER_WEANED, None, "Commercial Cow"),

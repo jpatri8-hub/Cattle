@@ -2,8 +2,8 @@
 from datetime import date, timedelta
 
 from app.models import (
-    Animal, AnimalType, AnimalTypeCostRate, CalfRecord, ExposureRecord, FeedoutRecord,
-    GRADE_SCALE, BreedingGroup,
+    Animal, AnimalType, AnimalTypeCostRate, BreedingGroup, CALF_QUALITY_SCALE,
+    CalfRecord, DEPARTURE_CULLED, ExposureRecord, FeedoutRecord, GRADE_SCALE, SEX_MALE,
 )
 
 
@@ -85,8 +85,7 @@ def weaning_rate(year):
     }
     calves = CalfRecord.query.filter(CalfRecord.calving_date >= start, CalfRecord.calving_date <= end).all()
     weaned = [c for c in calves if c.weaned_date]
-    avg_weaning_weight = None
-    weights = [float(c.birth_weight) for c in weaned if c.birth_weight]
+    weights = [float(c.weaning_weight) for c in weaned if c.weaning_weight]
     exposed = len(exposed_ids)
     rate = (len(weaned) / exposed * 100) if exposed else None
     return {
@@ -155,4 +154,46 @@ def feedout_rollup_by_parent(relation="sire"):
             "avg_adg": round(sum(b["adgs"]) / len(b["adgs"]), 2) if b["adgs"] else None,
         })
     result.sort(key=lambda x: (x["avg_grade_score"] is None, -(x["avg_grade_score"] or 0)))
+    return result
+
+
+def bulls_culled(year):
+    start, end = _year_bounds(year)
+    culled = Animal.query.filter(
+        Animal.sex == SEX_MALE,
+        Animal.departure_reason == DEPARTURE_CULLED,
+        Animal.departure_date >= start, Animal.departure_date <= end,
+    ).all()
+    return {"year": year, "count": len([a for a in culled if a.is_bull])}
+
+
+def calf_performance_by_parent(relation="sire"):
+    """Rolls up CalfRecords by sire or dam: count, average weaning weight,
+    average age at weaning (days), and average calf quality score."""
+    records = CalfRecord.query.all()
+    buckets = {}
+    for r in records:
+        parent = r.sire if relation == "sire" else r.dam
+        if not parent:
+            continue
+        b = buckets.setdefault(parent, {"count": 0, "weights": [], "ages": [], "quality_scores": []})
+        b["count"] += 1
+        if r.weaning_weight:
+            b["weights"].append(float(r.weaning_weight))
+        age = r.weaning_age_days
+        if age is not None:
+            b["ages"].append(age)
+        if r.quality in CALF_QUALITY_SCALE:
+            b["quality_scores"].append(CALF_QUALITY_SCALE[r.quality])
+
+    result = []
+    for parent, b in buckets.items():
+        result.append({
+            "parent": parent,
+            "count": b["count"],
+            "avg_weaning_weight": round(sum(b["weights"]) / len(b["weights"]), 1) if b["weights"] else None,
+            "avg_weaning_age_days": round(sum(b["ages"]) / len(b["ages"]), 1) if b["ages"] else None,
+            "avg_quality_score": round(sum(b["quality_scores"]) / len(b["quality_scores"]), 2) if b["quality_scores"] else None,
+        })
+    result.sort(key=lambda x: (x["avg_quality_score"] is None, -(x["avg_quality_score"] or 0)))
     return result

@@ -15,6 +15,7 @@
           <td class="text-end">
             <a href="{{ url_for('admin.edit_location', location_id=l.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
             <form method="post" action="{{ url_for('admin.deactivate_location', location_id=l.id) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-warning">{{ "Deactivate" if l.is_active else "Activate" }}</button>
             </form>
           </td>

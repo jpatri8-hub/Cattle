@@ -20,6 +20,7 @@
     {% endif %}
     {% if current_user.is_owner %}
     <form method="post" action="{{ url_for('animals.delete_animal', animal_id=animal.id) }}" class="d-inline" onsubmit="return confirm('Delete this animal? This cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-outline-danger">Delete</button>
     </form>
     {% endif %}
@@ -51,6 +52,7 @@
         <tr><th>Birth Location</th><td>{{ animal.birth_location.display_name if animal.birth_location else "-" }}</td></tr>
         <tr><th>Current Weight</th><td>{{ animal.current_weight or "-" }} lbs</td></tr>
         <tr><th>Registration #</th><td>{{ animal.registration_number or "-" }}</td></tr>
+        <tr><th>Brand</th><td>{% if animal.brand_number %}{{ animal.brand_number }}{% if animal.brand_type %} ({{ animal.brand_type }}){% endif %}{% else %}-{% endif %}</td></tr>
         <tr><th>Sire</th><td>{% if animal.sire %}<a href="{{ url_for('animals.view_animal', animal_id=animal.sire.id) }}">{{ animal.sire.display_id }}</a>{% else %}-{% endif %}</td></tr>
         <tr><th>Dam</th><td>{% if animal.dam %}<a href="{{ url_for('animals.view_animal', animal_id=animal.dam.id) }}">{{ animal.dam.display_id }}</a>{% else %}-{% endif %}</td></tr>
         {% if animal.candidate_sires %}
@@ -66,6 +68,36 @@
       </table>
       {% if animal.notes %}<p class="mt-2 mb-0"><strong>Notes:</strong> {{ animal.notes }}</p>{% endif %}
     </div>
+
+    {% if animal.calf_record %}
+    <div class="card card-dashboard p-3 mt-3">
+      <h5>Calf Record</h5>
+      <table class="table table-sm mb-2">
+        <tr><th>Dam</th><td><a href="{{ url_for('animals.view_animal', animal_id=animal.calf_record.dam_id) }}">{{ animal.calf_record.dam.display_id }}</a></td></tr>
+        <tr><th>Sire</th><td>{% if animal.calf_record.sire %}<a href="{{ url_for('animals.view_animal', animal_id=animal.calf_record.sire.id) }}">{{ animal.calf_record.sire.display_id }}</a>{% else %}Unconfirmed{% endif %}</td></tr>
+        <tr><th>Calving Ease</th><td>{{ calving_ease_label }}</td></tr>
+        <tr><th>Weaned Date</th><td>{{ animal.calf_record.weaned_date or "Not weaned yet" }}</td></tr>
+        <tr><th>Weaning Weight</th><td>{{ animal.calf_record.weaning_weight or "-" }}{% if animal.calf_record.weaning_weight %} lbs{% endif %}</td></tr>
+        <tr><th>Quality</th><td>{{ animal.calf_record.quality or "Not rated" }}</td></tr>
+      </table>
+      <form method="post" action="{{ url_for('animals.update_calf_quality', calf_record_id=animal.calf_record.id) }}" class="row g-2">
+        {{ quality_form.hidden_tag() }}
+        <div class="col-auto">
+          {{ quality_form.weaned_date.label(class="form-label small") }}
+          {{ quality_form.weaned_date(class="form-control form-control-sm", value=animal.calf_record.weaned_date or "") }}
+        </div>
+        <div class="col-auto">
+          {{ quality_form.weaning_weight.label(class="form-label small") }}
+          {{ quality_form.weaning_weight(class="form-control form-control-sm", value=animal.calf_record.weaning_weight or "") }}
+        </div>
+        <div class="col-auto">
+          {{ quality_form.quality.label(class="form-label small") }}
+          {{ quality_form.quality(class="form-select form-select-sm") }}
+        </div>
+        <div class="col-auto d-flex align-items-end">{{ quality_form.submit(class="btn btn-sm btn-success") }}</div>
+      </form>
+    </div>
+    {% endif %}
 
     {% if animal.sex == 'male' and 'Calf' in (animal.animal_type.name if animal.animal_type else '') %}
     <div class="card card-dashboard p-3 mt-3">
@@ -163,50 +195,32 @@
     <div class="card card-dashboard p-3 mb-4">
       <h5>Calves</h5>
       <table class="table table-sm">
-        <thead><tr><th>Calving Date</th><th>Sex</th><th>Calf</th><th>Outcome</th><th>Weaned</th><th></th></tr></thead>
+        <thead><tr><th>Calving Date</th><th>Sex</th><th>Calf</th><th>Weaned</th><th>Quality</th></tr></thead>
         <tbody>
           {% for c in animal.calf_records_as_dam %}
           <tr>
             <td>{{ c.calving_date }}</td>
             <td>{{ c.calf_sex.capitalize() if c.calf_sex else "-" }}</td>
             <td>{% if c.calf_animal %}<a href="{{ url_for('animals.view_animal', animal_id=c.calf_animal.id) }}">{{ c.calf_animal.display_id }}</a>{% else %}-{% endif %}</td>
-            <td>{{ c.outcome.replace('_',' ') }}{% if c.cull_reason %} ({{ c.cull_reason }}){% endif %}</td>
             <td>{{ c.weaned_date or "-" }}</td>
-            <td>
-              <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#outcome{{ c.id }}">Update</button>
-            </td>
+            <td>{{ c.quality or "-" }}</td>
           </tr>
-          <tr class="collapse" id="outcome{{ c.id }}"><td colspan="6">
-            <form method="post" action="{{ url_for('animals.update_calf_outcome', calf_record_id=c.id) }}" class="row g-2 align-items-end">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <div class="col-auto">
-                <select name="outcome" class="form-select form-select-sm">
-                  {% for val, label in [('active','Active'),('lost','Lost calf'),('died_after_birth','Died after birth'),('culled','Culled'),('retained','Retained'),('sold','Sold (not a cull)')] %}
-                  <option value="{{ val }}" {% if c.outcome == val %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="col-auto"><input class="form-control form-control-sm" name="cull_reason" placeholder="Cull reason" value="{{ c.cull_reason or '' }}"></div>
-              <div class="col-auto"><input type="date" class="form-control form-control-sm" name="weaned_date" value="{{ c.weaned_date or '' }}" title="Weaned date"></div>
-              <div class="col-auto"><input class="form-control form-control-sm" name="notes" placeholder="Notes" value="{{ c.notes or '' }}"></div>
-              <div class="col-auto"><button class="btn btn-sm btn-outline-success">Save</button></div>
-            </form>
-          </td></tr>
-          {% else %}<tr><td colspan="6" class="text-muted">No calf records yet.</td></tr>{% endfor %}
+          {% else %}<tr><td colspan="5" class="text-muted">No calf records yet.</td></tr>{% endfor %}
         </tbody>
       </table>
+      <p class="text-muted small mb-2">Weaning date, weaning weight, and quality are recorded on each calf's own page.</p>
       <button class="btn btn-sm btn-success" type="button" data-bs-toggle="collapse" data-bs-target="#newCalfBox">+ Record New Calf</button>
       <div class="collapse mt-2" id="newCalfBox">
         <form method="post" action="{{ url_for('animals.record_calf', cow_id=animal.id) }}" class="row g-2 align-items-end">
           {{ calf_form.hidden_tag() }}
           <div class="col-auto">{{ calf_form.calving_date.label(class="form-label small") }} {{ calf_form.calving_date(class="form-control form-control-sm") }}</div>
           <div class="col-auto">{{ calf_form.calf_sex.label(class="form-label small") }} {{ calf_form.calf_sex(class="form-select form-select-sm") }}</div>
-          <div class="col-auto">{{ calf_form.animal_type_id.label(class="form-label small") }} {{ calf_form.animal_type_id(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ calf_form.birth_weight.label(class="form-label small") }} {{ calf_form.birth_weight(class="form-control form-control-sm") }}</div>
           <div class="col-auto">{{ calf_form.birth_location_id.label(class="form-label small") }} {{ calf_form.birth_location_id(class="form-select form-select-sm") }}</div>
+          <div class="col-auto">{{ calf_form.calving_ease.label(class="form-label small") }} {{ calf_form.calving_ease(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ calf_form.notes(class="form-control form-control-sm", placeholder="Notes") }}</div>
           <div class="col-auto">{{ calf_form.submit(class="btn btn-sm btn-success") }}</div>
-          <div class="col-12"><small class="text-muted">Candidate sires are assigned automatically from her breeding exposure in the prior 6-12 months.</small></div>
+          <div class="col-12"><small class="text-muted">Type is set automatically from her type (Registered Angus/Commercial) and the calf's sex. Candidate sires are assigned automatically from her breeding exposure in the prior 6-12 months.</small></div>
         </form>
       </div>
     </div>
@@ -284,19 +298,20 @@
     <div class="card card-dashboard p-3">
       <h5>Feedlot / Butcher</h5>
       <table class="table table-sm">
-        <thead><tr><th>Start</th><th>Start Wt</th><th>Days on Feed</th><th>Hanging Wt</th><th>Yield %</th><th>Grade</th><th>ADG</th></tr></thead>
+        <thead><tr><th>Start</th><th>Start Wt</th><th>Days on Feed</th><th>Live Wt</th><th>Yield</th><th>Yield %</th><th>Grade</th><th>ADG</th></tr></thead>
         <tbody>
           {% for f in animal.feedout_records %}
           <tr>
             <td>{{ f.start_date }} ({{ f.start_age_display or "-" }})</td>
             <td>{{ f.start_weight or "-" }}</td>
             <td>{{ f.days_on_feed or "-" }}</td>
-            <td>{{ f.hanging_weight or "-" }}</td>
-            <td>{{ f.dressed_yield_pct or "-" }}</td>
+            <td>{{ f.live_weight or "-" }}</td>
+            <td>{{ f.yield_weight or "-" }}</td>
+            <td>{{ "%.1f"|format(f.yield_pct) if f.yield_pct else "-" }}</td>
             <td>{{ f.steak_grade or "-" }}</td>
             <td>{{ "%.2f"|format(f.average_daily_gain) if f.average_daily_gain else "-" }}</td>
           </tr>
-          {% else %}<tr><td colspan="7" class="text-muted">Not on feed.</td></tr>{% endfor %}
+          {% else %}<tr><td colspan="8" class="text-muted">Not on feed.</td></tr>{% endfor %}
         </tbody>
       </table>
       <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#feedoutBox">+ Add Feedout Record</button>
@@ -305,12 +320,12 @@
           {{ feedout_form.hidden_tag() }}
           <div class="col-auto">{{ feedout_form.start_date.label(class="form-label small") }} {{ feedout_form.start_date(class="form-control form-control-sm") }}</div>
           <div class="col-auto">{{ feedout_form.start_weight.label(class="form-label small") }} {{ feedout_form.start_weight(class="form-control form-control-sm") }}</div>
-          <div class="col-auto">{{ feedout_form.days_on_feed.label(class="form-label small") }} {{ feedout_form.days_on_feed(class="form-control form-control-sm") }}</div>
           <div class="col-auto">{{ feedout_form.end_date.label(class="form-label small") }} {{ feedout_form.end_date(class="form-control form-control-sm") }}</div>
-          <div class="col-auto">{{ feedout_form.hanging_weight.label(class="form-label small") }} {{ feedout_form.hanging_weight(class="form-control form-control-sm") }}</div>
-          <div class="col-auto">{{ feedout_form.dressed_yield_pct.label(class="form-label small") }} {{ feedout_form.dressed_yield_pct(class="form-control form-control-sm") }}</div>
+          <div class="col-auto">{{ feedout_form.live_weight.label(class="form-label small") }} {{ feedout_form.live_weight(class="form-control form-control-sm") }}</div>
+          <div class="col-auto">{{ feedout_form.yield_weight.label(class="form-label small") }} {{ feedout_form.yield_weight(class="form-control form-control-sm") }}</div>
           <div class="col-auto">{{ feedout_form.steak_grade.label(class="form-label small") }} {{ feedout_form.steak_grade(class="form-select form-select-sm") }}</div>
           <div class="col-auto">{{ feedout_form.submit(class="btn btn-sm btn-outline-success") }}</div>
+          <div class="col-12"><small class="text-muted">Days on feed and yield % are computed automatically.</small></div>
         </form>
       </div>
     </div>

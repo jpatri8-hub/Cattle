@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Edit Sale {{ sale.invoice_number }} - Cattle Manager{% endblock %}
+{% block content %}
+<h2>Edit Sale {{ sale.invoice_number }}</h2>
+<p class="text-muted">The animals on this sale can't be changed here - delete the sale (which returns the animals to the active herd) and record a new one if the animal list needs to change.</p>
+<form method="post" class="card card-dashboard p-4" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="row">
+    <div class="col-md-4 mb-3">{{ form.sale_category_id.label(class="form-label") }} {{ form.sale_category_id(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">{{ form.buyer_id.label(class="form-label") }} {{ form.buyer_id(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">{{ form.sale_date.label(class="form-label") }} {{ form.sale_date(class="form-control") }}</div>
+    <div class="col-md-6 mb-3">{{ form.payment_method.label(class="form-label") }} {{ form.payment_method(class="form-control") }}</div>
+    <div class="col-md-6 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control") }}</div>
+  </div>
+
+  <h5 class="mt-2">Animals</h5>
+  <table class="table table-sm">
+    <thead><tr><th>ID</th><th>Type</th><th>Price ($)</th><th>Weight (lbs)</th></tr></thead>
+    <tbody>
+      {% for line in sale.lines %}
+      <tr>
+        <td>{{ line.animal.display_id }}</td>
+        <td>{{ line.animal.animal_type.name if line.animal.animal_type else "-" }}</td>
+        <td><input type="number" step="0.01" class="form-control form-control-sm" name="price_{{ line.id }}" value="{{ line.price }}"></td>
+        <td><input type="number" step="0.01" class="form-control form-control-sm" name="weight_{{ line.id }}" value="{{ line.weight or '' }}"></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {{ form.submit(class="btn btn-success") }}
+  <a href="{{ url_for('sales.view_sale', sale_id=sale.id) }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}
