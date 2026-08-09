@@ -13,7 +13,7 @@ from app.forms import (
 )
 from app.lifecycle import (
     apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
-    compute_calf_type, compute_dam_candidate_sires, generate_brand_number,
+    choose_rotating_sire, compute_calf_type, compute_dam_candidate_sires,
     generate_temp_id, inbreeding_warnings,
 )
 from app.models import (
@@ -507,7 +507,6 @@ def record_calf(cow_id):
             sex=form.calf_sex.data,
             birth_date=form.calving_date.data,
             birth_weight=form.birth_weight.data,
-            brand_number=generate_brand_number(form.calving_date.data),
             location_id=dam.location_id,
             birth_location_id=birth_location_id,
             dam_id=dam.id,
@@ -520,7 +519,7 @@ def record_calf(cow_id):
         candidate_sires, matched_groups = compute_dam_candidate_sires(dam, form.calving_date.data)
         calf.candidate_sires = candidate_sires
         chosen_group = matched_groups[0] if len(matched_groups) == 1 else None
-        chosen_sire = candidate_sires[0] if len(candidate_sires) == 1 else None
+        chosen_sire = choose_rotating_sire(candidate_sires)
         if chosen_sire:
             calf.sire_id = chosen_sire.id
         db.session.commit()
@@ -539,11 +538,14 @@ def record_calf(cow_id):
         db.session.add(record)
         db.session.commit()
 
-        msg = f"Calf recorded for {dam.display_id} ({calf_type.name}, temp ID {calf.temp_id}, brand {calf.brand_number})."
-        if candidate_sires:
-            msg += f" Candidate sire(s): {', '.join(b.display_id for b in candidate_sires)}."
+        msg = f"Calf recorded for {dam.display_id} ({calf_type.name}, temp ID {calf.temp_id})."
+        if chosen_sire:
+            msg += f" Sire assigned: {chosen_sire.display_id}"
+            if len(candidate_sires) > 1:
+                msg += f" (rotated among {len(candidate_sires)} bulls she was exposed to)"
+            msg += "."
         else:
-            msg += " No breeding exposure found in the prior 6-12 months, so no candidate sires were assigned."
+            msg += " No breeding exposure found in the prior 6-12 months, so no sire could be assigned automatically."
         flash(msg, "success")
     else:
         flash("Could not record the calf - check the form.", "danger")

@@ -5,12 +5,17 @@ Angus calves, following the ranch's column-by-column instructions for the
 AAA template. Calving seasons run September-April and are reported the
 following May-October, so the report is keyed by "season end year" - the
 2026-2027 season (Sept 2026 - Apr 2027) is season_end_year=2027.
+
+Brand numbers are not assigned at birth - they're only assigned to calves
+the user actually selects to submit for registration, so the sequence
+reflects real submissions rather than every calf ever born.
 """
 from datetime import date
 
 import openpyxl
 from openpyxl.styles import Font
 
+from app.lifecycle import generate_brand_number
 from app.models import Animal, AnimalType, CalfRecord, SEX_MALE
 
 MEMBER_CODE = "724338"
@@ -44,65 +49,101 @@ def _first_sire(calf):
     return None
 
 
-def registration_report_rows(season_end_year):
-    """Returns a list of dicts, one per registered calf born in the season,
-    in the exact column order of the AAA template."""
+def eligible_calf_records(season_end_year):
+    """Every Registered Angus calf born in the given season, oldest first -
+    the full pool the registration report can select from, regardless of
+    whether a brand number has been assigned yet."""
     start, end = season_bounds(season_end_year)
-    calves = (
+    return (
         CalfRecord.query.join(Animal, CalfRecord.calf_animal_id == Animal.id)
         .join(AnimalType, Animal.animal_type_id == AnimalType.id)
         .filter(
             CalfRecord.calving_date >= start, CalfRecord.calving_date <= end,
             AnimalType.name.in_(REGISTERED_CALF_TYPES),
         )
-        .order_by(CalfRecord.dam_id, CalfRecord.calving_date)
+        .order_by(CalfRecord.calving_date, CalfRecord.dam_id)
         .all()
     )
 
-    dam_counts = {}
-    for c in calves:
-        dam_counts[c.dam_id] = dam_counts.get(c.dam_id, 0) + 1
 
+def _dam_counts(calf_records):
+    counts = {}
+    for c in calf_records:
+        counts[c.dam_id] = counts.get(c.dam_id, 0) + 1
+    return counts
+
+
+def _row_for_calf(c, dam_counts):
+    calf = c.calf_animal
+    dam = c.dam
+    if not calf or not dam:
+        return None
+    sire = _first_sire(calf)
+    return {
+        "CALF TAG": calf.display_id,
+        "SEX*": "Bull" if calf.sex == SEX_MALE else "Heifer",
+        "BIRTH DATE*": c.calving_date,
+        "ANGUS NAME*": "",
+        "PRIMARY ID*": calf.brand_number or "",
+        "TATTOO/ BRAND*": "",
+        "840 EID": "",
+        "SECONDARY ID": "V",
+        "ARTIFICIAL INSEMINATION?*": "",
+        "TWIN INDICATOR*": 0 if dam_counts.get(dam.id) == 1 else "",
+        "SIRE REG*": sire.registration_number if sire and sire.registration_number else "",
+        "SIRE NAME": "",
+        "DAM TAG": dam.display_id,
+        "DAM TATTOO": "",
+        "DAM REG*": dam.registration_number or "",
+        "DAM NAME": "",
+        "FIRST OWNER*": MEMBER_CODE,
+        "BULL PERMIT": "",
+        "PERMIT TYPE": "",
+        "EMBRYO TRANSPLANT?*": "",
+        "IVF?": "",
+        "EMBRYO REMOVAL DATE": "",
+        "STORE ELECTRONICALLY?*": "Y",
+        "BIRTH WEIGHT": float(c.birth_weight) if c.birth_weight else "",
+        "BIRTH GROUP CODE": "",
+        "CALVING EASE": c.calving_ease or "",
+    }
+
+
+def registration_rows_for_selection(season_end_year, selected_ids=None):
+    """Rows for the given season, optionally limited to selected_ids (a set
+    of CalfRecord ids). Twin indicators are always computed from the whole
+    season's calves so they stay correct even when exporting a subset."""
+    calves = eligible_calf_records(season_end_year)
+    dam_counts = _dam_counts(calves)
+    if selected_ids is not None:
+        calves = [c for c in calves if c.id in selected_ids]
     rows = []
     for c in calves:
-        calf = c.calf_animal
-        dam = c.dam
-        if not calf or not dam:
-            continue
-        sire = _first_sire(calf)
-        rows.append({
-            "CALF TAG": calf.display_id,
-            "SEX*": "Bull" if calf.sex == SEX_MALE else "Heifer",
-            "BIRTH DATE*": c.calving_date,
-            "ANGUS NAME*": "",
-            "PRIMARY ID*": calf.brand_number or "",
-            "TATTOO/ BRAND*": "",
-            "840 EID": "",
-            "SECONDARY ID": "V",
-            "ARTIFICIAL INSEMINATION?*": "",
-            "TWIN INDICATOR*": 0 if dam_counts.get(dam.id) == 1 else "",
-            "SIRE REG*": sire.registration_number if sire and sire.registration_number else "",
-            "SIRE NAME": "",
-            "DAM TAG": dam.display_id,
-            "DAM TATTOO": "",
-            "DAM REG*": dam.registration_number or "",
-            "DAM NAME": "",
-            "FIRST OWNER*": MEMBER_CODE,
-            "BULL PERMIT": "",
-            "PERMIT TYPE": "",
-            "EMBRYO TRANSPLANT?*": "",
-            "IVF?": "",
-            "EMBRYO REMOVAL DATE": "",
-            "STORE ELECTRONICALLY?*": "Y",
-            "BIRTH WEIGHT": float(c.birth_weight) if c.birth_weight else "",
-            "BIRTH GROUP CODE": "",
-            "CALVING EASE": c.calving_ease or "",
-        })
+        row = _row_for_calf(c, dam_counts)
+        if row:
+            rows.append(row)
     return rows
 
 
-def build_registration_workbook(season_end_year):
-    rows = registration_report_rows(season_end_year)
+def registration_report_rows(season_end_year):
+    return registration_rows_for_selection(season_end_year)
+
+
+def assign_brand_numbers(calf_records):
+    """Assigns a brand number to each given CalfRecord's calf that doesn't
+    already have one, oldest calving date first, so a partial/re-export never
+    changes a previously-assigned number."""
+    assigned = []
+    for c in sorted(calf_records, key=lambda r: r.calving_date):
+        calf = c.calf_animal
+        if calf and not calf.brand_number:
+            calf.brand_number = generate_brand_number(c.calving_date)
+            assigned.append(calf)
+    return assigned
+
+
+def build_registration_workbook(season_end_year, selected_ids=None):
+    rows = registration_rows_for_selection(season_end_year, selected_ids)
 
     wb = openpyxl.Workbook()
     ws = wb.active
