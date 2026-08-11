@@ -268,29 +268,26 @@
     <div class="card card-dashboard p-3 mb-4">
       <h5>Health Records</h5>
       <table class="table table-sm">
-        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Vet</th><th>Next Due</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Next Due</th></tr></thead>
         <tbody>
           {% for h in animal.health_records %}
           <tr>
             <td>{{ h.date_recorded }}</td>
             <td><span class="badge bg-info text-dark">{{ h.record_type.replace('_',' ') }}</span></td>
             <td>{{ h.description }}</td>
-            <td>{{ h.vet_name or "-" }}</td>
             <td>{{ h.next_due_date or "-" }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="5" class="text-muted">No health records yet.</td></tr>
+          <tr><td colspan="4" class="text-muted">No health records yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
       <form method="post" action="{{ url_for('animals.add_health', animal_id=animal.id) }}" class="row g-2 align-items-end">
         {{ health_form.hidden_tag() }}
-        <div class="col-auto">{{ health_form.record_type(class="form-select") }}</div>
-        <div class="col-auto">{{ health_form.date_recorded(class="form-control") }}</div>
-        <div class="col-auto">{{ health_form.description(class="form-control", placeholder="Description") }}</div>
-        <div class="col-auto">{{ health_form.vet_name(class="form-control", placeholder="Vet") }}</div>
-        <div class="col-auto">{{ health_form.cost(class="form-control", placeholder="Cost") }}</div>
-        <div class="col-auto">{{ health_form.next_due_date(class="form-control") }}</div>
+        <div class="col-auto">{{ health_form.record_type.label(class="form-label small") }} {{ health_form.record_type(class="form-select") }}</div>
+        <div class="col-auto">{{ health_form.date_recorded.label(class="form-label small") }} {{ health_form.date_recorded(class="form-control") }}</div>
+        <div class="col-auto">{{ health_form.description.label(class="form-label small") }} {{ health_form.description(class="form-control", placeholder="Description") }}</div>
+        <div class="col-auto">{{ health_form.next_due_date.label(class="form-label small") }} {{ health_form.next_due_date(class="form-control") }}</div>
         <div class="col-auto">{{ health_form.submit(class="btn btn-outline-success") }}</div>
       </form>
     </div>

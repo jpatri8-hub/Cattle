@@ -1,13 +1,13 @@
 """Set up a fresh database: creates the first Owner account and seeds sensible
-defaults (animal types with lifecycle transfers, a starter property/location,
-and sale categories) so the app is usable immediately. Safe to re-run - it
-skips anything that already exists.
+defaults (animal types with lifecycle transfers, a starter location, and sale
+categories) so the app is usable immediately. Safe to re-run - it skips
+anything that already exists.
 """
 import getpass
 
 from app import create_app, db
 from app.models import (
-    AnimalType, Location, Property, ROLE_OWNER, SEX_FEMALE, SEX_MALE,
+    AnimalType, Location, ROLE_OWNER, SEX_FEMALE, SEX_MALE,
     SaleCategory, TRANSFER_TRIGGER_AGE, TRANSFER_TRIGGER_WEANED, User,
 )
 
@@ -45,13 +45,10 @@ def seed_defaults():
         db.session.commit()
         print(f"Seeded {len(DEFAULT_TYPES)} animal types.")
 
-    if not Property.query.first():
-        prop = Property(name="Home Ranch")
-        db.session.add(prop)
-        db.session.flush()
-        db.session.add(Location(name="Home Pen", property_id=prop.id))
+    if not Location.query.first():
+        db.session.add(Location(name="Home Pen"))
         db.session.commit()
-        print("Seeded a starter property ('Home Ranch') and location ('Home Pen') - rename or add more under Admin.")
+        print("Seeded a starter location ('Home Pen') - rename or add more under Admin.")
 
     if not SaleCategory.query.first():
         for name in DEFAULT_SALE_CATEGORIES:

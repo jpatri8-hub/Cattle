@@ -30,14 +30,8 @@ class UserForm(FlaskForm):
 
 # ---- Admin / configuration -------------------------------------------------
 
-class PropertyForm(FlaskForm):
-    name = StringField("Property Name", validators=[DataRequired(), Length(max=120)])
-    submit = SubmitField("Save Property")
-
-
 class LocationForm(FlaskForm):
     name = StringField("Location / Pasture Name", validators=[DataRequired(), Length(max=120)])
-    property_id = SelectField("Property", coerce=int, validators=[DataRequired()])
     submit = SubmitField("Save Location")
 
 
@@ -78,6 +72,7 @@ class AnimalForm(FlaskForm):
     registration_number = StringField("Registration Number", validators=[Optional(), Length(max=80)])
     brand_type = SelectField("Brand Type", choices=[("", "-- None --")] + [(b, b) for b in BRAND_TYPE_CHOICES], validators=[Optional()])
     brand_number = StringField("Brand Number", validators=[Optional(), Length(max=20)])
+    is_sale_bull = BooleanField("Sale Bull (excluded from the Bull export)", default=False)
     purchase_date = DateField("Purchase Date", validators=[Optional()])
     purchase_price = DecimalField("Purchase Price", validators=[Optional()], places=2)
     notes = TextAreaField("Notes", validators=[Optional()])
@@ -104,18 +99,18 @@ class HealthRecordForm(FlaskForm):
     )
     description = StringField("Description", validators=[DataRequired(), Length(max=255)])
     date_recorded = DateField("Date", validators=[DataRequired()])
-    vet_name = StringField("Vet Name", validators=[Optional(), Length(max=120)])
-    cost = DecimalField("Cost", validators=[Optional()], places=2)
-    next_due_date = DateField("Next Due Date", validators=[Optional()])
+    next_due_date = DateField(
+        "Next Due Date (when this vaccination/treatment needs a follow-up)", validators=[Optional()]
+    )
     submit = SubmitField("Add Health Record")
 
 
 class BulkVaccinationForm(FlaskForm):
     description = StringField("Vaccine / Description", validators=[DataRequired(), Length(max=255)])
     date_recorded = DateField("Date", validators=[DataRequired()])
-    vet_name = StringField("Vet Name", validators=[Optional(), Length(max=120)])
-    cost = DecimalField("Cost (per head)", validators=[Optional()], places=2)
-    next_due_date = DateField("Next Due Date", validators=[Optional()])
+    next_due_date = DateField(
+        "Next Due Date (when this vaccination/treatment needs a follow-up)", validators=[Optional()]
+    )
     submit = SubmitField("Apply to Selected Animals")
 
 
@@ -236,6 +231,9 @@ class RentalCheckForm(FlaskForm):
     )
     condition_notes = TextAreaField("Condition Notes", validators=[Optional()])
     date_recorded = DateField("Date", validators=[DataRequired()])
+    location_id = SelectField(
+        "Bull's Location (on return)", coerce=int, validators=[Optional()]
+    )
     submit = SubmitField("Log Check")
 
 

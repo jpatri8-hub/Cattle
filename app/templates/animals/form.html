@@ -19,6 +19,10 @@
     <div class="col-md-6 mb-3">{{ form.sire_id.label(class="form-label") }} {{ form.sire_id(class="form-select") }}</div>
     <div class="col-md-6 mb-3">{{ form.dam_id.label(class="form-label") }} {{ form.dam_id(class="form-select") }}</div>
 
+    <div class="col-md-4 mb-3">{{ form.brand_type.label(class="form-label") }} {{ form.brand_type(class="form-select") }}</div>
+    <div class="col-md-4 mb-3">{{ form.brand_number.label(class="form-label") }} {{ form.brand_number(class="form-control") }}</div>
+    <div class="col-md-4 mb-3 form-check pt-4">{{ form.is_sale_bull(class="form-check-input") }} {{ form.is_sale_bull.label(class="form-check-label") }}</div>
+
     {% if current_user.is_owner %}
     <div class="col-md-6 mb-3">{{ form.purchase_date.label(class="form-label") }} {{ form.purchase_date(class="form-control") }}</div>
     <div class="col-md-6 mb-3">{{ form.purchase_price.label(class="form-label") }} {{ form.purchase_price(class="form-control") }}</div>

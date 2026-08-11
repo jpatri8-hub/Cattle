@@ -38,30 +38,6 @@ def apply_candidate_sires(animal):
     animal.candidate_sires = compute_candidate_sires(animal)
 
 
-def inbreeding_warnings(bull, dam):
-    """Returns a list of human-readable warnings if breeding `bull` to `dam`
-    looks like it risks inbreeding, based on recorded/candidate parentage."""
-    warnings = []
-    if dam.sire_id and dam.sire_id == bull.id:
-        warnings.append(f"{bull.display_id} is {dam.display_id}'s recorded sire.")
-    if bull.sire_id and bull.sire_id == dam.id:
-        warnings.append(f"{dam.display_id} is {bull.display_id}'s recorded sire.")
-
-    dam_candidates = {a.id for a in dam.candidate_sires}
-    if bull.id in dam_candidates:
-        warnings.append(
-            f"{bull.display_id} was a candidate sire for {dam.display_id} "
-            f"(present at her birth location during the likely breeding window)."
-        )
-    bull_candidates = {a.id for a in bull.candidate_sires}
-    shared = dam_candidates & bull_candidates
-    if shared:
-        warnings.append(f"{dam.display_id} and {bull.display_id} share a candidate sire — possible half-siblings.")
-    if bull.dam_id and dam.dam_id and bull.dam_id == dam.dam_id:
-        warnings.append(f"{bull.display_id} and {dam.display_id} share the same recorded dam.")
-    return warnings
-
-
 DAM_EXPOSURE_LOOKBACK_MIN_DAYS = 182  # ~6 months
 DAM_EXPOSURE_LOOKBACK_MAX_DAYS = 365  # ~12 months
 
