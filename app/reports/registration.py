@@ -138,6 +138,7 @@ def assign_brand_numbers(calf_records):
         calf = c.calf_animal
         if calf and not calf.brand_number:
             calf.brand_number = generate_brand_number(c.calving_date)
+            calf.name = calf.brand_number
             assigned.append(calf)
     return assigned
 

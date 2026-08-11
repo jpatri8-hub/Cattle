@@ -61,7 +61,7 @@
   <thead>
     <tr>
       <th><input type="checkbox" onclick="document.querySelectorAll('.animal-check').forEach(c=>c.checked=this.checked)"></th>
-      <th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>Last Seen</th><th></th>
+      <th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>Has Calf</th><th>Last Seen</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -72,11 +72,12 @@
       <td>{{ a.animal_type.name if a.animal_type else "-" }}</td>
       <td>{{ a.age_display }}</td>
       <td>{{ a.location.display_name if a.location else "-" }}</td>
+      <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>
       <td>{{ a.last_seen_date or "Never" }}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
       <td><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}" class="btn btn-sm btn-outline-success">View</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="text-muted">No animals found.</td></tr>
+    <tr><td colspan="8" class="text-muted">No animals found.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -97,9 +98,10 @@
       <div class="col-auto"><button type="submit" name="action" value="move" class="btn btn-sm btn-outline-primary">Move</button></div>
       <div class="col-auto"><input type="text" name="description" class="form-control form-control-sm" placeholder="Vaccine / description" style="width:180px;"></div>
       <div class="col-auto"><input type="date" name="date_recorded" class="form-control form-control-sm" value="{{ today }}"></div>
+      <div class="col-auto"><input type="date" name="next_due_date" class="form-control form-control-sm" title="Next due date (optional)"></div>
       <div class="col-auto"><button type="submit" name="action" value="vaccinate" class="btn btn-sm btn-outline-info">Vaccinate</button></div>
     </div>
-    <div class="row g-2 align-items-center">
+    <div class="row g-2 align-items-center mb-2">
       <div class="col-auto"><input type="date" name="semen_test_date" class="form-control form-control-sm" value="{{ today }}" title="Semen test date"></div>
       <div class="col-auto">
         <select name="semen_test_result" class="form-select form-select-sm">
@@ -111,9 +113,20 @@
       </div>
       <div class="col-auto"><input type="text" name="semen_test_notes" class="form-control form-control-sm" placeholder="Notes"></div>
       <div class="col-auto"><button type="submit" name="action" value="semen_test" class="btn btn-sm btn-outline-info">Add Semen Test</button></div>
+    </div>
+    <div class="row g-2 align-items-center">
+      <div class="col-auto"><input type="date" name="seen_date" class="form-control form-control-sm" value="{{ today }}" title="Date seen"></div>
+      <div class="col-auto">
+        <select name="seen_location_id" class="form-select form-select-sm">
+          <option value="">Location seen (optional, keeps current)...</option>
+          {% for l in locations %}<option value="{{ l.id }}">{{ l.display_name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-auto"><input type="text" name="seen_notes" class="form-control form-control-sm" placeholder="Notes"></div>
+      <div class="col-auto"><button type="submit" name="action" value="mark_seen" class="btn btn-sm btn-outline-info">Mark Seen</button></div>
       <div class="col-auto ms-auto"><button type="submit" name="action" value="sell" class="btn btn-sm btn-success">Sell Selected</button></div>
     </div>
-    <p class="text-muted small mt-2 mb-0">Check animals in the table above, then use the actions here. Semen tests only apply to selected animals that are bulls.</p>
+    <p class="text-muted small mt-2 mb-0">Check animals in the table above, then use the actions here. Semen tests only apply to selected animals that are bulls. "Mark Seen" logs a health status of Healthy for each selected animal.</p>
   </div>
 </form>
 {% endblock %}

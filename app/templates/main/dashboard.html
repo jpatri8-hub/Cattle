@@ -111,7 +111,10 @@
       <ul class="list-group list-group-flush">
         {% for h in overdue_vaccines %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('animals.view_animal', animal_id=h.animal_id) }}">{{ h.animal.display_id }} - {{ h.description }}</a>
+          <span>
+            <a href="{{ url_for('animals.view_animal', animal_id=h.animal_id) }}">{{ h.animal.display_id }} - {{ h.description }}</a>
+            <small class="text-muted">({{ h.animal.location.display_name if h.animal.location else "no location" }})</small>
+          </span>
           <span class="{{ 'text-danger fw-bold' if h.next_due_date < today else '' }}">{{ h.next_due_date }}</span>
         </li>
         {% endfor %}

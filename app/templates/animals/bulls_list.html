@@ -7,10 +7,10 @@
     {{ "Showing Low Birth Weight Only (CED≥ 5, BW≤ 1) ✕" if low_bw else "Low Birth Weight (CED≥ 5, BW≤ 1)" }}
   </a>
 </div>
-<p class="text-muted small">Showing {{ bulls|length }} bull{{ "" if bulls|length == 1 else "s" }}.</p>
+<p class="text-muted small">Showing {{ bulls|length }} bull{{ "" if bulls|length == 1 else "s" }}. Sale Bulls are excluded from the Bull export.</p>
 <div class="table-responsive">
 <table class="table table-sm bg-white align-middle">
-  <thead><tr><th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>CED</th><th>BW EPD</th><th>Latest Semen Test</th><th>Availability</th></tr></thead>
+  <thead><tr><th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>CED</th><th>BW EPD</th><th>Latest Semen Test</th><th>Availability</th><th>Sale Bull</th></tr></thead>
   <tbody>
     {% for b in bulls %}
     <tr>
@@ -22,9 +22,15 @@
       <td>{{ b.epd.birth_weight_epd if b.epd else "-" }}</td>
       <td>{% if b.latest_semen_test %}{{ b.latest_semen_test.result }} ({{ b.latest_semen_test.test_date }}){% else %}Not tested{% endif %}</td>
       <td>{% if b.is_rentable_available %}<span class="badge bg-success">Available</span>{% else %}<span class="badge bg-warning text-dark">{{ b.rental_unavailable_reason }}</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('animals.toggle_sale_bull', animal_id=b.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm {{ 'btn-secondary' if b.is_sale_bull else 'btn-outline-secondary' }}">{{ "Yes ✕" if b.is_sale_bull else "Mark" }}</button>
+        </form>
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="8" class="text-muted">No bulls on farm.</td></tr>
+    <tr><td colspan="9" class="text-muted">No bulls on farm.</td></tr>
     {% endfor %}
   </tbody>
 </table>

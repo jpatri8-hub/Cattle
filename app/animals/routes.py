@@ -14,13 +14,14 @@ from app.forms import (
 from app.lifecycle import (
     apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
     choose_rotating_sire, compute_calf_type, compute_dam_candidate_sires,
-    generate_temp_id, inbreeding_warnings,
+    generate_temp_id,
 )
 from app.models import (
     Animal, AnimalType, BreedingGroup, BullEPD, CALVING_EASE_CHOICES, CalfRecord,
     ExposureRecord, FeedoutRecord, HealthRecord, LastSeenCheck,
     Location, RENTAL_ACTIVE, RENTAL_BOOKED, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
 )
+from app.pedigree import coefficient_of_inbreeding_pct
 
 animals_bp = Blueprint("animals", __name__, url_prefix="/animals")
 
@@ -37,7 +38,7 @@ def _type_choices(sex=None, active_only=True):
 
 
 def _location_choices(include_blank=True):
-    locs = Location.query.filter_by(is_active=True).join(Location.property).order_by(Location.name).all()
+    locs = Location.query.filter_by(is_active=True).order_by(Location.name).all()
     choices = [(l.id, l.display_name) for l in locs]
     return ([(0, "-- None --")] + choices) if include_blank else choices
 
@@ -157,16 +158,14 @@ def new_animal():
     if form.validate_on_submit():
         tag = (form.tag_id.data or "").strip() or None
         brand_number = (form.brand_number.data or "").strip() or None
-        if tag and Animal.query.filter_by(tag_id=tag).first():
-            flash("An animal with that tag/ID already exists.", "danger")
-        elif brand_number and Animal.query.filter_by(brand_number=brand_number).first():
+        if brand_number and Animal.query.filter_by(brand_number=brand_number).first():
             flash("An animal with that brand number already exists.", "danger")
         else:
             atype = AnimalType.query.get(form.animal_type_id.data)
             animal = Animal(
                 tag_id=tag,
                 temp_id=None if tag else generate_temp_id(),
-                name=form.name.data,
+                name=brand_number or form.name.data,
                 animal_type_id=atype.id,
                 sex=atype.sex,
                 birth_date=form.birth_date.data,
@@ -177,7 +176,8 @@ def new_animal():
                 dam_id=form.dam_id.data or None,
                 registration_number=form.registration_number.data,
                 brand_type=form.brand_type.data or None,
-                brand_number=form.brand_number.data or None,
+                brand_number=brand_number,
+                is_sale_bull=form.is_sale_bull.data,
                 notes=form.notes.data,
                 created_by_id=current_user.id,
             )
@@ -215,16 +215,13 @@ def edit_animal(animal_id):
     if form.validate_on_submit():
         tag = (form.tag_id.data or "").strip() or None
         brand_number = (form.brand_number.data or "").strip() or None
-        existing = Animal.query.filter_by(tag_id=tag).first() if tag else None
         existing_brand = Animal.query.filter_by(brand_number=brand_number).first() if brand_number else None
-        if existing and existing.id != animal.id:
-            flash("An animal with that tag/ID already exists.", "danger")
-        elif existing_brand and existing_brand.id != animal.id:
+        if existing_brand and existing_brand.id != animal.id:
             flash("An animal with that brand number already exists.", "danger")
         else:
             atype = AnimalType.query.get(form.animal_type_id.data)
             animal.tag_id = tag
-            animal.name = form.name.data
+            animal.name = brand_number or form.name.data
             animal.animal_type_id = atype.id
             animal.sex = atype.sex
             animal.birth_date = form.birth_date.data
@@ -235,7 +232,8 @@ def edit_animal(animal_id):
             animal.dam_id = form.dam_id.data or None
             animal.registration_number = form.registration_number.data
             animal.brand_type = form.brand_type.data or None
-            animal.brand_number = form.brand_number.data or None
+            animal.brand_number = brand_number
+            animal.is_sale_bull = form.is_sale_bull.data
             animal.notes = form.notes.data
 
             if current_user.is_owner:
@@ -308,7 +306,7 @@ def add_health(animal_id):
     if form.validate_on_submit():
         db.session.add(HealthRecord(
             animal_id=animal.id, record_type=form.record_type.data, description=form.description.data,
-            date_recorded=form.date_recorded.data, vet_name=form.vet_name.data, cost=form.cost.data,
+            date_recorded=form.date_recorded.data,
             next_due_date=form.next_due_date.data, recorded_by_id=current_user.id,
         ))
         db.session.commit()
@@ -364,8 +362,6 @@ def bulk_action():
     elif action == "vaccinate":
         description = request.form.get("description", "").strip()
         date_recorded = request.form.get("date_recorded") or date.today().isoformat()
-        vet_name = request.form.get("vet_name") or None
-        cost = request.form.get("cost") or None
         next_due_date = request.form.get("next_due_date") or None
         if not description:
             flash("Enter a vaccine/description to apply to the selected animals.", "warning")
@@ -374,12 +370,24 @@ def bulk_action():
                 db.session.add(HealthRecord(
                     animal_id=a.id, record_type="vaccination", description=description,
                     date_recorded=date.fromisoformat(date_recorded),
-                    vet_name=vet_name, cost=cost or None,
                     next_due_date=date.fromisoformat(next_due_date) if next_due_date else None,
                     recorded_by_id=current_user.id,
                 ))
             db.session.commit()
             flash(f"Logged vaccination for {len(animals)} animal(s).", "success")
+
+    elif action == "mark_seen":
+        date_recorded = request.form.get("seen_date") or date.today().isoformat()
+        location_id = request.form.get("seen_location_id", type=int)
+        notes = request.form.get("seen_notes") or None
+        for a in animals:
+            db.session.add(LastSeenCheck(
+                animal_id=a.id, date_recorded=date.fromisoformat(date_recorded),
+                location_id=location_id or a.location_id, health_status="Healthy",
+                notes=notes, seen_by_id=current_user.id,
+            ))
+        db.session.commit()
+        flash(f"Marked {len(animals)} animal(s) as seen.", "success")
 
     elif action == "semen_test":
         test_date = request.form.get("semen_test_date") or date.today().isoformat()
@@ -437,9 +445,6 @@ def import_csv():
             atype = types_by_name.get(type_name)
             if not atype:
                 errors.append(f"Row {i}: unknown animal type '{row.get('animal_type')}'")
-                continue
-            if tag and Animal.query.filter_by(tag_id=tag).first():
-                errors.append(f"Row {i}: tag '{tag}' already exists, skipped")
                 continue
 
             loc = locations_by_name.get((row.get("location") or "").strip().lower())
@@ -602,6 +607,9 @@ def new_breeding_group():
     return render_template("animals/breeding_form.html", form=form, title="New Breeding Group")
 
 
+HIGH_COI_PCT = 6.25  # first-cousin level or closer; flagged as a review-worthy pairing
+
+
 @animals_bp.route("/breeding/<int:group_id>")
 @login_required
 def view_breeding_group(group_id):
@@ -611,17 +619,34 @@ def view_breeding_group(group_id):
     add_form.animal_ids.choices = [c for c in _cow_choices() if c[0] not in already_in]
     confirm_form = ConfirmBredForm()
 
-    warnings_by_cow = {}
+    cows_in_group = [e.animal for e in group.exposures]
+
+    coi_by_exposure = {}
     for exposure in group.exposures:
-        warnings = []
-        for bull in group.bulls:
-            warnings += inbreeding_warnings(bull, exposure.animal)
-        if warnings:
-            warnings_by_cow[exposure.id] = warnings
+        coi_by_exposure[exposure.id] = {
+            bull.id: coefficient_of_inbreeding_pct(bull.id, exposure.animal_id) for bull in group.bulls
+        }
+
+    group_bull_ids = {b.id for b in group.bulls}
+    available_bulls_coi = []
+    if cows_in_group:
+        candidate_bulls = [
+            a for a in Animal.query.filter_by(is_active=True, sex=SEX_MALE).all()
+            if a.is_bull and a.id not in group_bull_ids and a.is_rentable_available
+        ]
+        for bull in candidate_bulls:
+            worst_cow, worst_coi = None, -1.0
+            for cow in cows_in_group:
+                coi = coefficient_of_inbreeding_pct(bull.id, cow.id)
+                if coi > worst_coi:
+                    worst_coi, worst_cow = coi, cow
+            available_bulls_coi.append({"bull": bull, "coi": worst_coi, "cow": worst_cow})
+        available_bulls_coi.sort(key=lambda r: r["coi"])
 
     return render_template(
         "animals/breeding_detail.html", group=group, add_form=add_form,
-        confirm_form=confirm_form, warnings_by_cow=warnings_by_cow,
+        confirm_form=confirm_form, coi_by_exposure=coi_by_exposure,
+        available_bulls_coi=available_bulls_coi, high_coi_pct=HIGH_COI_PCT,
     )
 
 
@@ -636,16 +661,15 @@ def add_cows_to_group(group_id):
     if form.validate_on_submit():
         warning_count = 0
         for animal_id in form.animal_ids.data:
-            cow = Animal.query.get(animal_id)
             for bull in group.bulls:
-                if inbreeding_warnings(bull, cow):
+                if coefficient_of_inbreeding_pct(bull.id, animal_id) >= HIGH_COI_PCT:
                     warning_count += 1
                     break
             db.session.add(ExposureRecord(breeding_group_id=group.id, animal_id=animal_id))
         db.session.commit()
         msg = f"Added {len(form.animal_ids.data)} animal(s) to the group."
         if warning_count:
-            msg += f" {warning_count} flagged with a possible inbreeding warning - review below."
+            msg += f" {warning_count} flagged with a high inbreeding coefficient (COI >= {HIGH_COI_PCT}%) - review below."
         flash(msg, "warning" if warning_count else "success")
     else:
         flash("Select at least one animal.", "danger")
@@ -700,6 +724,19 @@ def list_bulls():
     return render_template("animals/bulls_list.html", bulls=bulls, low_bw=low_bw)
 
 
+@animals_bp.route("/<int:animal_id>/toggle-sale-bull", methods=["POST"])
+@login_required
+def toggle_sale_bull(animal_id):
+    animal = Animal.query.get_or_404(animal_id)
+    animal.is_sale_bull = not animal.is_sale_bull
+    db.session.commit()
+    flash(
+        f"{animal.display_id} marked as {'a Sale Bull (excluded from the Bull export).' if animal.is_sale_bull else 'no longer a Sale Bull.'}",
+        "success",
+    )
+    return redirect(request.referrer or url_for("animals.list_bulls"))
+
+
 @animals_bp.route("/bulls/export")
 @login_required
 def export_bulls():
@@ -712,7 +749,7 @@ def export_bulls():
     location_id = request.args.get("location_id", type=int)
     q = (request.args.get("q") or "").strip()
 
-    query = Animal.query.filter_by(is_active=True, sex=SEX_MALE)
+    query = Animal.query.filter_by(is_active=True, sex=SEX_MALE, is_sale_bull=False)
     if type_id:
         query = query.filter_by(animal_type_id=type_id)
     if location_id:
@@ -727,11 +764,10 @@ def export_bulls():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "ID", "Type", "Location", "Semen Test Result", "Semen Test Date",
+        "ID", "Location", "CED EPD", "Birth Weight EPD",
         "Availability", "Renter", "Rental Start", "Rental End", "Rental Status",
     ])
     for b in bulls:
-        test = b.latest_semen_test
         rental = b.latest_rental
         show_rental = False
         if rental:
@@ -743,10 +779,9 @@ def export_bulls():
                     show_rental = True
         writer.writerow([
             b.display_id,
-            b.animal_type.name if b.animal_type else "",
             b.location.display_name if b.location else "",
-            test.result if test else "",
-            test.test_date.isoformat() if test else "",
+            b.epd.ced if b.epd else "",
+            b.epd.birth_weight_epd if b.epd else "",
             "Available" if b.is_rentable_available else (b.rental_unavailable_reason or ""),
             rental.customer.name if show_rental else "",
             rental.start_date.isoformat() if show_rental else "",

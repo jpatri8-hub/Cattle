@@ -65,10 +65,11 @@
         <div class="col-auto">{{ check_form.check_type.label(class="form-label") }} {{ check_form.check_type(class="form-select") }}</div>
         <div class="col-auto">{{ check_form.date_recorded.label(class="form-label") }} {{ check_form.date_recorded(class="form-control") }}</div>
         <div class="col-auto">{{ check_form.condition_score.label(class="form-label") }} {{ check_form.condition_score(class="form-select") }}</div>
+        <div class="col-auto">{{ check_form.location_id.label(class="form-label") }} {{ check_form.location_id(class="form-select") }}</div>
         <div class="col-md-4">{{ check_form.condition_notes.label(class="form-label") }} {{ check_form.condition_notes(class="form-control") }}</div>
         <div class="col-auto">{{ check_form.submit(class="btn btn-outline-success") }}</div>
       </form>
-      <p class="text-muted small mt-2 mb-0">Logging a "pickup" check moves the rental to Active. Logging a "return" check moves the rental to Returned and records the condition score - the bull stays unavailable for 15 days after.</p>
+      <p class="text-muted small mt-2 mb-0">Logging a "pickup" check moves the rental to Active. Logging a "return" check moves the rental to Returned, records the condition score, and (if a location is picked) moves the bull there - he stays unavailable for 15 days after.</p>
     </div>
   </div>
 </div>

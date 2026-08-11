@@ -6,7 +6,7 @@ from flask_login import current_user, login_required
 from app import db
 from app.forms import RentalCheckForm, RentalForm, RentalStatusForm
 from app.models import (
-    Animal, Buyer, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED, RENTAL_RETURNED,
+    Animal, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED, RENTAL_RETURNED,
     Rental, RentalCheck,
 )
 
@@ -82,6 +82,9 @@ def new_rental():
 def view_rental(rental_id):
     rental = Rental.query.get_or_404(rental_id)
     check_form = RentalCheckForm(date_recorded=date.today())
+    check_form.location_id.choices = [(0, "-- Keep current location --")] + [
+        (l.id, l.display_name) for l in Location.query.filter_by(is_active=True).order_by(Location.name).all()
+    ]
     status_form = RentalStatusForm(obj=rental)
     status_form.status.data = rental.status
     return render_template("rentals/detail.html", rental=rental, check_form=check_form, status_form=status_form)
@@ -92,6 +95,9 @@ def view_rental(rental_id):
 def add_check(rental_id):
     rental = Rental.query.get_or_404(rental_id)
     form = RentalCheckForm()
+    form.location_id.choices = [(0, "-- Keep current location --")] + [
+        (l.id, l.display_name) for l in Location.query.filter_by(is_active=True).order_by(Location.name).all()
+    ]
     if form.validate_on_submit():
         check = RentalCheck(
             rental_id=rental.id,
@@ -110,6 +116,8 @@ def add_check(rental_id):
             rental.actual_return_date = form.date_recorded.data
             if form.condition_score.data:
                 rental.return_condition_score = form.condition_score.data
+            if form.location_id.data:
+                rental.bull.location_id = form.location_id.data
 
         db.session.commit()
         flash("Check logged.", "success")

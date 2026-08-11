@@ -5,12 +5,11 @@
 <div class="row">
   <div class="col-md-7">
     <table class="table table-sm bg-white">
-      <thead><tr><th>Name</th><th>Property</th><th>Active</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Active</th><th></th></tr></thead>
       <tbody>
         {% for l in locations %}
         <tr>
           <td>{{ l.name }}</td>
-          <td>{{ l.property.name }}</td>
           <td>{{ "Yes" if l.is_active else "No" }}</td>
           <td class="text-end">
             <a href="{{ url_for('admin.edit_location', location_id=l.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
@@ -21,7 +20,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="text-muted">No locations yet.</td></tr>
+        <tr><td colspan="3" class="text-muted">No locations yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -32,7 +31,6 @@
       <form method="post" novalidate>
         {{ form.hidden_tag() }}
         <div class="mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
-        <div class="mb-3">{{ form.property_id.label(class="form-label") }} {{ form.property_id(class="form-select") }}</div>
         {{ form.submit(class="btn btn-success") }}
       </form>
     </div>

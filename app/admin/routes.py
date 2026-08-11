@@ -6,9 +6,9 @@ from flask_login import login_required
 from app import db
 from app.decorators import owner_required
 from app.forms import (
-    AnimalTypeForm, CostRateForm, LocationForm, PropertyForm, SaleCategoryForm,
+    AnimalTypeForm, CostRateForm, LocationForm, SaleCategoryForm,
 )
-from app.models import AnimalType, AnimalTypeCostRate, Location, Property, SaleCategory
+from app.models import AnimalType, AnimalTypeCostRate, Location, SaleCategory
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -25,44 +25,21 @@ def index():
     return render_template("admin/index.html")
 
 
-# ---- Properties & Locations -------------------------------------------------
-
-@admin_bp.route("/properties", methods=["GET", "POST"])
-def properties():
-    form = PropertyForm()
-    if form.validate_on_submit():
-        db.session.add(Property(name=form.name.data.strip()))
-        db.session.commit()
-        flash("Property added.", "success")
-        return redirect(url_for("admin.properties"))
-    props = Property.query.order_by(Property.name).all()
-    return render_template("admin/properties.html", form=form, properties=props)
-
-
-@admin_bp.route("/properties/<int:property_id>/edit", methods=["GET", "POST"])
-def edit_property(property_id):
-    prop = Property.query.get_or_404(property_id)
-    form = PropertyForm(obj=prop)
-    if form.validate_on_submit():
-        prop.name = form.name.data.strip()
-        db.session.commit()
-        flash("Property updated.", "success")
-        return redirect(url_for("admin.properties"))
-    return render_template("admin/property_form.html", form=form, prop=prop)
-
+# ---- Locations ---------------------------------------------------------------
 
 @admin_bp.route("/locations", methods=["GET", "POST"])
 def locations():
     form = LocationForm()
-    form.property_id.choices = [(p.id, p.name) for p in Property.query.order_by(Property.name).all()]
-    if not form.property_id.choices:
-        flash("Add a property first.", "warning")
-    elif form.validate_on_submit():
-        db.session.add(Location(name=form.name.data.strip(), property_id=form.property_id.data))
-        db.session.commit()
-        flash("Location added.", "success")
-        return redirect(url_for("admin.locations"))
-    locs = Location.query.join(Property).order_by(Property.name, Location.name).all()
+    if form.validate_on_submit():
+        existing = Location.query.filter_by(name=form.name.data.strip()).first()
+        if existing:
+            flash("A location with that name already exists.", "danger")
+        else:
+            db.session.add(Location(name=form.name.data.strip()))
+            db.session.commit()
+            flash("Location added.", "success")
+            return redirect(url_for("admin.locations"))
+    locs = Location.query.order_by(Location.name).all()
     return render_template("admin/locations.html", form=form, locations=locs)
 
 
@@ -70,10 +47,8 @@ def locations():
 def edit_location(location_id):
     loc = Location.query.get_or_404(location_id)
     form = LocationForm(obj=loc)
-    form.property_id.choices = [(p.id, p.name) for p in Property.query.order_by(Property.name).all()]
     if form.validate_on_submit():
         loc.name = form.name.data.strip()
-        loc.property_id = form.property_id.data
         db.session.commit()
         flash("Location updated.", "success")
         return redirect(url_for("admin.locations"))

@@ -95,28 +95,14 @@ class User(UserMixin, db.Model):
         return f"<User {self.email} ({self.role})>"
 
 
-class Property(db.Model):
+class Location(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
-    locations = db.relationship("Location", backref="property", order_by="Location.name")
-
-    def __repr__(self):
-        return f"<Property {self.name}>"
-
-
-class Location(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    property_id = db.Column(db.Integer, db.ForeignKey("property.id"), nullable=False)
-    is_active = db.Column(db.Boolean, default=True, nullable=False)
-
-    __table_args__ = (db.UniqueConstraint("name", "property_id", name="uq_location_name_property"),)
-
     @property
     def display_name(self):
-        return f"{self.name} ({self.property.name})"
+        return self.name
 
     def __repr__(self):
         return f"<Location {self.name}>"
@@ -160,7 +146,7 @@ animal_candidate_sires = db.Table(
 
 class Animal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    tag_id = db.Column(db.String(40), unique=True, index=True)
+    tag_id = db.Column(db.String(40), index=True)  # not unique - duplicate tags are allowed; `id` is the true unique identifier
     temp_id = db.Column(db.String(40), unique=True, index=True)
     name = db.Column(db.String(120))
 
@@ -176,6 +162,7 @@ class Animal(db.Model):
     registration_number = db.Column(db.String(80))
     brand_type = db.Column(db.String(20))  # Hot Brand / Freeze Brand
     brand_number = db.Column(db.String(20), unique=True, index=True)
+    is_sale_bull = db.Column(db.Boolean, default=False, nullable=False)
 
     sire_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
     dam_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
@@ -372,8 +359,6 @@ class HealthRecord(db.Model):
     record_type = db.Column(db.String(40), nullable=False)  # vaccination, treatment, illness, vet_visit
     description = db.Column(db.String(255), nullable=False)
     date_recorded = db.Column(db.Date, nullable=False, default=date.today)
-    vet_name = db.Column(db.String(120))
-    cost = db.Column(db.Numeric(8, 2))
     next_due_date = db.Column(db.Date)
     recorded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     recorded_by = db.relationship("User")
