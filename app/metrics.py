@@ -7,7 +7,20 @@ from app.models import (
 )
 
 
-DAM_COST_DAYS_AT_WEANING = 365  # ~12 months of the dam's daily rate, credited to the calf at weaning
+DAM_COST_DAYS_AT_WEANING = 365  # ~12 months of the dam's daily rate, transferred to the calf at weaning
+
+
+def _dam_weaning_transfer_amount(dam):
+    """The one-time lump (12 months of her current type's daily rate) that
+    moves from a dam's own cost to a calf's cost once that calf is weaned."""
+    if not dam:
+        return 0.0
+    latest_rate = AnimalTypeCostRate.query.filter_by(
+        animal_type_id=dam.animal_type_id
+    ).order_by(AnimalTypeCostRate.effective_date.desc()).first()
+    if not latest_rate:
+        return 0.0
+    return float(latest_rate.rate_per_day) * DAM_COST_DAYS_AT_WEANING
 
 
 def cost_for_animal(animal, start=None, end=None):
@@ -16,43 +29,40 @@ def cost_for_animal(animal, start=None, end=None):
 
     A recorded calf (has a CalfRecord) doesn't accrue its own upkeep cost
     until it's weaned - before that, its upkeep is assumed to be covered by
-    its dam. At the moment of weaning, 12 months of the dam's daily rate is
-    added as a one-time lump sum representing her cost of producing it, and
-    the calf's own cost starts accruing from the weaned date forward."""
+    its dam. At the moment of weaning, 12 months of the dam's daily rate
+    transfers from her cost to the calf's as a one-time lump sum, and the
+    calf's own cost starts accruing from the weaned date forward. This is a
+    real (zero-sum) transfer: the same amount is subtracted from the dam for
+    every calf of hers that's been weaned, so the combined dam+calf total is
+    unchanged - it only shifts which animal the cost is attributed to."""
     calf_record = animal.calf_record
-    dam_cost = 0.0
+    dam_credit = 0.0
     if calf_record:
         if not calf_record.weaned_date:
             return 0.0
         start = start or calf_record.weaned_date
-        dam = calf_record.dam
-        if dam:
-            latest_rate = AnimalTypeCostRate.query.filter_by(
-                animal_type_id=dam.animal_type_id
-            ).order_by(AnimalTypeCostRate.effective_date.desc()).first()
-            if latest_rate:
-                dam_cost = float(latest_rate.rate_per_day) * DAM_COST_DAYS_AT_WEANING
+        dam_credit = _dam_weaning_transfer_amount(calf_record.dam)
 
-    start = start or animal.birth_date or (animal.created_at.date() if animal.created_at else None)
-    end = end or animal.departure_date or date.today()
-    if not start or start > end:
-        return dam_cost
+    own_start = start or animal.birth_date or (animal.created_at.date() if animal.created_at else None)
+    own_end = end or animal.departure_date or date.today()
 
-    rates = AnimalTypeCostRate.query.filter_by(
-        animal_type_id=animal.animal_type_id
-    ).order_by(AnimalTypeCostRate.effective_date).all()
-    if not rates:
-        return dam_cost
+    own_cost = 0.0
+    if own_start and own_start <= own_end:
+        rates = AnimalTypeCostRate.query.filter_by(
+            animal_type_id=animal.animal_type_id
+        ).order_by(AnimalTypeCostRate.effective_date).all()
+        for i, r in enumerate(rates):
+            seg_start = max(own_start, r.effective_date)
+            seg_end = rates[i + 1].effective_date - timedelta(days=1) if i + 1 < len(rates) else own_end
+            seg_end = min(seg_end, own_end)
+            if seg_start <= seg_end:
+                days = (seg_end - seg_start).days + 1
+                own_cost += days * float(r.rate_per_day)
 
-    total = dam_cost
-    for i, r in enumerate(rates):
-        seg_start = max(start, r.effective_date)
-        seg_end = rates[i + 1].effective_date - timedelta(days=1) if i + 1 < len(rates) else end
-        seg_end = min(seg_end, end)
-        if seg_start <= seg_end:
-            days = (seg_end - seg_start).days + 1
-            total += days * float(r.rate_per_day)
-    return total
+    weaned_calf_count = sum(1 for c in animal.calf_records_as_dam if c.weaned_date)
+    dam_debit = weaned_calf_count * _dam_weaning_transfer_amount(animal) if weaned_calf_count else 0.0
+
+    return own_cost + dam_credit - dam_debit
 
 
 def animal_revenue(animal):
