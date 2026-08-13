@@ -7,21 +7,44 @@ from app.models import (
 )
 
 
+DAM_COST_DAYS_AT_WEANING = 365  # ~12 months of the dam's daily rate, credited to the calf at weaning
+
+
 def cost_for_animal(animal, start=None, end=None):
     """Sums rate_per_day * days on farm using the AnimalTypeCostRate history in
-    effect on each day of the range (rate can change over time)."""
+    effect on each day of the range (rate can change over time).
+
+    A recorded calf (has a CalfRecord) doesn't accrue its own upkeep cost
+    until it's weaned - before that, its upkeep is assumed to be covered by
+    its dam. At the moment of weaning, 12 months of the dam's daily rate is
+    added as a one-time lump sum representing her cost of producing it, and
+    the calf's own cost starts accruing from the weaned date forward."""
+    calf_record = animal.calf_record
+    dam_cost = 0.0
+    if calf_record:
+        if not calf_record.weaned_date:
+            return 0.0
+        start = start or calf_record.weaned_date
+        dam = calf_record.dam
+        if dam:
+            latest_rate = AnimalTypeCostRate.query.filter_by(
+                animal_type_id=dam.animal_type_id
+            ).order_by(AnimalTypeCostRate.effective_date.desc()).first()
+            if latest_rate:
+                dam_cost = float(latest_rate.rate_per_day) * DAM_COST_DAYS_AT_WEANING
+
     start = start or animal.birth_date or (animal.created_at.date() if animal.created_at else None)
     end = end or animal.departure_date or date.today()
     if not start or start > end:
-        return 0.0
+        return dam_cost
 
     rates = AnimalTypeCostRate.query.filter_by(
         animal_type_id=animal.animal_type_id
     ).order_by(AnimalTypeCostRate.effective_date).all()
     if not rates:
-        return 0.0
+        return dam_cost
 
-    total = 0.0
+    total = dam_cost
     for i, r in enumerate(rates):
         seg_start = max(start, r.effective_date)
         seg_end = rates[i + 1].effective_date - timedelta(days=1) if i + 1 < len(rates) else end
@@ -30,21 +53,6 @@ def cost_for_animal(animal, start=None, end=None):
             days = (seg_end - seg_start).days + 1
             total += days * float(r.rate_per_day)
     return total
-
-
-def calf_total_cost(calf_animal):
-    """A calf's own upkeep cost plus 12 months of her dam's daily rate,
-    representing the cow's attributed cost of producing that calf."""
-    own_cost = cost_for_animal(calf_animal)
-    dam_cost = 0.0
-    dam = calf_animal.dam
-    if dam:
-        latest_rate = AnimalTypeCostRate.query.filter_by(
-            animal_type_id=dam.animal_type_id
-        ).order_by(AnimalTypeCostRate.effective_date.desc()).first()
-        if latest_rate:
-            dam_cost = float(latest_rate.rate_per_day) * 365
-    return own_cost + dam_cost
 
 
 def animal_revenue(animal):
