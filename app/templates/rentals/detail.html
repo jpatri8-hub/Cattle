@@ -29,17 +29,6 @@
       </table>
       {% if rental.contract_notes %}<p class="mt-2 mb-0"><strong>Contract Notes:</strong> {{ rental.contract_notes }}</p>{% endif %}
     </div>
-
-    <div class="card card-dashboard p-3 mt-3">
-      <h5>Update Status</h5>
-      <form method="post" action="{{ url_for('rentals.update_status', rental_id=rental.id) }}">
-        {{ status_form.hidden_tag() }}
-        <div class="mb-2">{{ status_form.status.label(class="form-label") }} {{ status_form.status(class="form-select") }}</div>
-        <div class="mb-2">{{ status_form.actual_return_date.label(class="form-label") }} {{ status_form.actual_return_date(class="form-control", value=rental.actual_return_date) }}</div>
-        <div class="form-check mb-2">{{ status_form.deposit_returned(class="form-check-input", checked=rental.deposit_returned) }} {{ status_form.deposit_returned.label(class="form-check-label") }}</div>
-        {{ status_form.submit(class="btn btn-outline-success") }}
-      </form>
-    </div>
   </div>
 
   <div class="col-md-7">

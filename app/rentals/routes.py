@@ -4,9 +4,9 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
-from app.forms import RentalCheckForm, RentalForm, RentalStatusForm
+from app.forms import RentalCheckForm, RentalForm
 from app.models import (
-    Animal, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED, RENTAL_RETURNED,
+    Animal, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_RETURNED,
     Rental, RentalCheck,
 )
 
@@ -85,9 +85,7 @@ def view_rental(rental_id):
     check_form.location_id.choices = [(0, "-- Keep current location --")] + [
         (l.id, l.display_name) for l in Location.query.filter_by(is_active=True).order_by(Location.name).all()
     ]
-    status_form = RentalStatusForm(obj=rental)
-    status_form.status.data = rental.status
-    return render_template("rentals/detail.html", rental=rental, check_form=check_form, status_form=status_form)
+    return render_template("rentals/detail.html", rental=rental, check_form=check_form)
 
 
 @rentals_bp.route("/<int:rental_id>/check", methods=["POST"])
@@ -123,18 +121,4 @@ def add_check(rental_id):
         flash("Check logged.", "success")
     else:
         flash("Could not log check - review the form.", "danger")
-    return redirect(url_for("rentals.view_rental", rental_id=rental.id))
-
-
-@rentals_bp.route("/<int:rental_id>/status", methods=["POST"])
-@login_required
-def update_status(rental_id):
-    rental = Rental.query.get_or_404(rental_id)
-    form = RentalStatusForm()
-    if form.validate_on_submit():
-        rental.status = form.status.data
-        rental.actual_return_date = form.actual_return_date.data
-        rental.deposit_returned = form.deposit_returned.data
-        db.session.commit()
-        flash("Rental status updated.", "success")
     return redirect(url_for("rentals.view_rental", rental_id=rental.id))
