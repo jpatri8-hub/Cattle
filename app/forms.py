@@ -8,7 +8,7 @@ from wtforms.validators import DataRequired, Email, Length, NumberRange, Optiona
 
 from app.models import (
     BRAND_TYPE_CHOICES, CALF_QUALITY_CHOICES, CALVING_EASE_CHOICES, CONDITION_SCORE_CHOICES,
-    DEPARTURE_CHOICES, HEALTH_STATUS_CHOICES, RENTAL_STATUS_CHOICES, ROLES, SEMEN_RESULT_CHOICES,
+    DEPARTURE_CHOICES, HEALTH_STATUS_CHOICES, ROLES, SEMEN_RESULT_CHOICES,
     SEX_CHOICES, STEAK_GRADE_CHOICES, TRANSFER_TRIGGER_CHOICES,
 )
 
@@ -134,12 +134,6 @@ class DepartureForm(FlaskForm):
     submit = SubmitField("Record Departure")
 
 
-class CastrationForm(FlaskForm):
-    castration_date = DateField("Castration Date", validators=[DataRequired()])
-    castration_method = StringField("Method", validators=[Optional(), Length(max=80)])
-    submit = SubmitField("Save Castration Record")
-
-
 class ImportCSVForm(FlaskForm):
     csv_file = FileField("CSV File", validators=[DataRequired(), FileAllowed(["csv"])])
     submit = SubmitField("Import Animals")
@@ -237,13 +231,6 @@ class RentalCheckForm(FlaskForm):
     submit = SubmitField("Log Check")
 
 
-class RentalStatusForm(FlaskForm):
-    status = SelectField("Status", choices=[(s, s.capitalize()) for s in RENTAL_STATUS_CHOICES])
-    actual_return_date = DateField("Actual Return Date", validators=[Optional()])
-    deposit_returned = BooleanField("Deposit Returned")
-    submit = SubmitField("Update Rental")
-
-
 # ---- Feedlot / Butcher ------------------------------------------------------------
 
 class FeedoutForm(FlaskForm):
@@ -251,7 +238,7 @@ class FeedoutForm(FlaskForm):
     start_weight = DecimalField("Starting Weight (lbs)", validators=[Optional()], places=2)
     end_date = DateField("Slaughter Date", validators=[Optional()])
     live_weight = DecimalField("Live Weight at Slaughter (lbs)", validators=[Optional()], places=2)
-    yield_weight = DecimalField("Yield (carcass weight, lbs)", validators=[Optional()], places=2)
+    yield_weight = DecimalField("Yield (packaged beef in lbs)", validators=[Optional()], places=2)
     steak_grade = SelectField("Steak Grade", choices=[("", "-- Not graded yet --")] + [(g, g) for g in STEAK_GRADE_CHOICES], validators=[Optional()])
     notes = TextAreaField("Notes", validators=[Optional()])
     submit = SubmitField("Save Feedout Record")

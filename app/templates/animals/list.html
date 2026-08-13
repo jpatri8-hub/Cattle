@@ -46,6 +46,10 @@
     <input type="checkbox" class="form-check-input" name="flagged" value="1" id="flagged" {% if flagged %}checked{% endif %} onchange="this.form.submit()">
     <label class="form-check-label" for="flagged">Not seen 4+ months</label>
   </div>
+  <div class="col-auto form-check pt-2">
+    <input type="checkbox" class="form-check-input" name="sale_bulls" value="1" id="saleBulls" {% if sale_bulls %}checked{% endif %} onchange="this.form.submit()">
+    <label class="form-check-label" for="saleBulls">Sale Bulls</label>
+  </div>
   <div class="col-auto">
     <button type="submit" class="btn btn-outline-secondary">Search</button>
   </div>
@@ -61,7 +65,7 @@
   <thead>
     <tr>
       <th><input type="checkbox" onclick="document.querySelectorAll('.animal-check').forEach(c=>c.checked=this.checked)"></th>
-      <th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>Has Calf</th><th>Last Seen</th><th></th>
+      <th>ID</th><th>Has Calf</th><th>Type</th><th>Age</th><th>Location</th><th>Last Seen</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -69,10 +73,10 @@
     <tr class="{{ 'table-warning' if a.not_seen_flagged }}">
       <td><input type="checkbox" class="animal-check" name="animal_ids" value="{{ a.id }}" form="bulkForm"></td>
       <td><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}</td>
+      <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>
       <td>{{ a.animal_type.name if a.animal_type else "-" }}</td>
       <td>{{ a.age_display }}</td>
       <td>{{ a.location.display_name if a.location else "-" }}</td>
-      <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>
       <td>{{ a.last_seen_date or "Never" }}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
       <td><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}" class="btn btn-sm btn-outline-success">View</a></td>
     </tr>

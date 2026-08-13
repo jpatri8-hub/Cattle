@@ -2,14 +2,14 @@
 {% block title %}Record Sale - Cattle Manager{% endblock %}
 {% block content %}
 <h2>Record Sale</h2>
-<p class="text-muted" id="truckloadHint">Check off the animals included in this sale, then enter one <strong>total weight</strong> and <strong>total sale price</strong> per animal type - the app splits it evenly across the animals of that type you checked.</p>
-<p class="text-muted" id="perAnimalHint">Check off the animals included in this sale and enter a price (and weight, optional) for each one.</p>
+<p class="text-muted" id="truckloadHint">Search below to add the animals included in this sale, then enter one <strong>total weight</strong> and <strong>total sale price</strong> per animal type - the app splits it evenly across the animals of that type you've added.</p>
+<p class="text-muted" id="perAnimalHint">Search below to add the animals included in this sale and enter a price (and weight, optional) for each one.</p>
 <form method="post" class="card card-dashboard p-4" novalidate>
   {{ form.hidden_tag() }}
   <div class="row">
     <div class="col-md-4 mb-3">
       {{ form.sale_category_id.label(class="form-label") }}
-      {{ form.sale_category_id(class="form-select", id="categorySelect", onchange="toggleSaleMode()") }}
+      {{ form.sale_category_id(class="form-select", id="categorySelect") }}
     </div>
     <div class="col-md-4 mb-3">
       {{ form.buyer_id.label(class="form-label") }}
@@ -25,78 +25,184 @@
 
   <h5 class="mt-2">Animals in this Sale</h5>
 
-  <div id="truckloadBlock">
-    {% for atype, type_animals in animals_by_type.items() %}
-    <div class="card card-dashboard p-3 mb-3">
-      <div class="row g-2 align-items-end mb-2">
-        <div class="col-auto"><strong>{{ atype.name if atype else "Unknown type" }}</strong></div>
-        <div class="col-auto">
-          <label class="form-label small mb-0">Total Weight (lbs)</label>
-          <input type="number" step="0.01" class="form-control form-control-sm" name="total_weight_{{ atype.id if atype else 0 }}">
-        </div>
-        <div class="col-auto">
-          <label class="form-label small mb-0">Total Sale Price ($)</label>
-          <input type="number" step="0.01" class="form-control form-control-sm" name="total_price_{{ atype.id if atype else 0 }}">
-        </div>
-        <div class="col-auto text-muted small">Split evenly across every animal of this type checked below.</div>
-      </div>
-      <div class="row row-cols-2 row-cols-md-4 g-1">
-        {% for a in type_animals %}
-        <div class="col">
-          <div class="form-check">
-            <input type="checkbox" class="form-check-input" name="animal_ids" value="{{ a.id }}" id="tl-an{{ a.id }}" {% if a.id in preselected %}checked{% endif %}>
-            <label class="form-check-label" for="tl-an{{ a.id }}">{{ a.display_id }} <small class="text-muted">({{ a.location.display_name if a.location else "-" }})</small></label>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% else %}
-    <p class="text-muted">No animals currently on farm.</p>
-    {% endfor %}
+  <div class="mb-3 position-relative">
+    <input type="text" id="animalSearch" class="form-control" autocomplete="off"
+           placeholder="Search by tag, temp ID, or name to add an animal...">
+    <div id="searchResults" class="list-group position-absolute w-100" style="z-index:10; max-height:260px; overflow-y:auto;"></div>
   </div>
 
-  <div id="perAnimalBlock" style="display:none;">
-    {% for atype, type_animals in animals_by_type.items() %}
-    <div class="card card-dashboard p-3 mb-3">
-      <strong>{{ atype.name if atype else "Unknown type" }}</strong>
-      <table class="table table-sm mb-0 mt-2">
-        <thead><tr><th></th><th>ID</th><th>Location</th><th>Price ($)</th><th>Weight (lbs)</th></tr></thead>
-        <tbody>
-          {% for a in type_animals %}
-          <tr>
-            <td><input type="checkbox" name="animal_ids" value="{{ a.id }}" id="pa-an{{ a.id }}" {% if a.id in preselected %}checked{% endif %}></td>
-            <td><label for="pa-an{{ a.id }}">{{ a.display_id }}</label></td>
-            <td>{{ a.location.display_name if a.location else "-" }}</td>
-            <td><input type="number" step="0.01" class="form-control form-control-sm" name="price_{{ a.id }}"></td>
-            <td><input type="number" step="0.01" class="form-control form-control-sm" name="weight_{{ a.id }}" value="{{ a.current_weight or '' }}"></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="text-muted">No animals currently on farm.</p>
-    {% endfor %}
-  </div>
+  <p class="text-muted small" id="noneSelectedMsg">No animals added yet - search above to add some.</p>
+  <div id="truckloadBlock"></div>
+  <div id="perAnimalBlock" style="display:none;"></div>
 
   {{ form.submit(class="btn btn-success") }}
   <a href="{{ url_for('sales.list_sales') }}" class="btn btn-link">Cancel</a>
 </form>
 
+<script type="application/json" id="animalsData">{{ animals_data|tojson }}</script>
 <script>
-function toggleSaleMode() {
+const ANIMALS = JSON.parse(document.getElementById('animalsData').textContent);
+const ANIMALS_BY_ID = {};
+ANIMALS.forEach(function (a) { ANIMALS_BY_ID[a.id] = a; });
+const selected = new Set({{ preselected|list|tojson }});
+
+function isTruckloadMode() {
   var select = document.getElementById('categorySelect');
-  var isTruckload = select.value === "{{ truckload_category_id or '' }}" && select.value !== "";
+  return select.value !== "" && select.value === "{{ truckload_category_id or '' }}";
+}
+
+function renderSearch() {
+  var q = document.getElementById('animalSearch').value.trim().toLowerCase();
+  var results = document.getElementById('searchResults');
+  results.innerHTML = '';
+  if (!q) return;
+  var matches = ANIMALS.filter(function (a) {
+    return !selected.has(a.id) &&
+      (a.display_id.toLowerCase().includes(q) || (a.name && a.name.toLowerCase().includes(q)));
+  });
+  if (!matches.length) {
+    results.innerHTML = '<div class="list-group-item text-muted">No matching animals.</div>';
+    return;
+  }
+  matches.slice(0, 15).forEach(function (a) {
+    var item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+    item.innerHTML = '<span>' + a.display_id + (a.name ? ' <small class="text-muted">' + a.name + '</small>' : '') +
+      ' <small class="text-muted">(' + a.type_name + ' - ' + a.location + ')</small></span><span class="text-success">+ Add</span>';
+    item.addEventListener('click', function () {
+      selected.add(a.id);
+      document.getElementById('animalSearch').value = '';
+      results.innerHTML = '';
+      renderSelected();
+    });
+    results.appendChild(item);
+  });
+}
+
+function removeAnimal(id) {
+  selected.delete(id);
+  renderSelected();
+}
+
+function renderSelected() {
+  var truckload = isTruckloadMode();
   var truckloadBlock = document.getElementById('truckloadBlock');
   var perAnimalBlock = document.getElementById('perAnimalBlock');
-  document.getElementById('truckloadHint').style.display = isTruckload ? '' : 'none';
-  document.getElementById('perAnimalHint').style.display = isTruckload ? 'none' : '';
-  truckloadBlock.style.display = isTruckload ? '' : 'none';
-  perAnimalBlock.style.display = isTruckload ? 'none' : '';
-  truckloadBlock.querySelectorAll('input').forEach(function (el) { el.disabled = !isTruckload; });
-  perAnimalBlock.querySelectorAll('input').forEach(function (el) { el.disabled = isTruckload; });
+  document.getElementById('truckloadHint').style.display = truckload ? '' : 'none';
+  document.getElementById('perAnimalHint').style.display = truckload ? 'none' : '';
+  document.getElementById('noneSelectedMsg').style.display = selected.size ? 'none' : '';
+  truckloadBlock.style.display = truckload ? '' : 'none';
+  perAnimalBlock.style.display = truckload ? 'none' : '';
+
+  if (truckload) {
+    perAnimalBlock.innerHTML = '';
+    renderTruckloadBlock();
+  } else {
+    truckloadBlock.innerHTML = '';
+    renderPerAnimalBlock();
+  }
 }
-document.addEventListener('DOMContentLoaded', toggleSaleMode);
+
+function renderTruckloadBlock() {
+  var container = document.getElementById('truckloadBlock');
+  container.innerHTML = '';
+  var byType = {};
+  var order = [];
+  selected.forEach(function (id) {
+    var a = ANIMALS_BY_ID[id];
+    if (!byType[a.type_id]) { byType[a.type_id] = []; order.push(a.type_id); }
+    byType[a.type_id].push(a);
+  });
+  order.forEach(function (typeId) {
+    var list = byType[typeId];
+    var card = document.createElement('div');
+    card.className = 'card card-dashboard p-3 mb-3';
+
+    var header = document.createElement('div');
+    header.className = 'row g-2 align-items-end mb-2';
+    header.innerHTML =
+      '<div class="col-auto"><strong>' + list[0].type_name + '</strong> <small class="text-muted">(' + list.length + ')</small></div>' +
+      '<div class="col-auto"><label class="form-label small mb-0">Total Weight (lbs)</label>' +
+        '<input type="number" step="0.01" class="form-control form-control-sm" name="total_weight_' + typeId + '"></div>' +
+      '<div class="col-auto"><label class="form-label small mb-0">Total Sale Price ($)</label>' +
+        '<input type="number" step="0.01" class="form-control form-control-sm" name="total_price_' + typeId + '"></div>';
+    card.appendChild(header);
+
+    var chips = document.createElement('div');
+    list.forEach(function (a) {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.name = 'animal_ids'; cb.value = a.id; cb.checked = true; cb.hidden = true;
+      chips.appendChild(cb);
+
+      var chip = document.createElement('span');
+      chip.className = 'badge bg-secondary me-1 mb-1';
+      chip.textContent = a.display_id + ' ';
+      var x = document.createElement('a');
+      x.href = '#'; x.className = 'text-white text-decoration-none'; x.innerHTML = '&times;';
+      x.addEventListener('click', function (e) { e.preventDefault(); removeAnimal(a.id); });
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+    card.appendChild(chips);
+    container.appendChild(card);
+  });
+}
+
+function renderPerAnimalBlock() {
+  var container = document.getElementById('perAnimalBlock');
+  container.innerHTML = '';
+  if (!selected.size) return;
+  var table = document.createElement('table');
+  table.className = 'table table-sm mb-0';
+  var thead = document.createElement('thead');
+  thead.innerHTML = '<tr><th>ID</th><th>Type</th><th>Location</th><th>Price ($)</th><th>Weight (lbs)</th><th></th></tr>';
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  selected.forEach(function (id) {
+    var a = ANIMALS_BY_ID[id];
+    var tr = document.createElement('tr');
+
+    var tdId = document.createElement('td');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.name = 'animal_ids'; cb.value = a.id; cb.checked = true; cb.hidden = true;
+    tdId.appendChild(cb);
+    tdId.appendChild(document.createTextNode(a.display_id));
+    tr.appendChild(tdId);
+
+    var tdType = document.createElement('td'); tdType.textContent = a.type_name; tr.appendChild(tdType);
+    var tdLoc = document.createElement('td'); tdLoc.textContent = a.location; tr.appendChild(tdLoc);
+
+    var tdPrice = document.createElement('td');
+    var priceInput = document.createElement('input');
+    priceInput.type = 'number'; priceInput.step = '0.01'; priceInput.className = 'form-control form-control-sm';
+    priceInput.name = 'price_' + a.id;
+    tdPrice.appendChild(priceInput);
+    tr.appendChild(tdPrice);
+
+    var tdWeight = document.createElement('td');
+    var weightInput = document.createElement('input');
+    weightInput.type = 'number'; weightInput.step = '0.01'; weightInput.className = 'form-control form-control-sm';
+    weightInput.name = 'weight_' + a.id;
+    if (a.current_weight) weightInput.value = a.current_weight;
+    tdWeight.appendChild(weightInput);
+    tr.appendChild(tdWeight);
+
+    var tdRemove = document.createElement('td');
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button'; removeBtn.className = 'btn btn-sm btn-outline-danger'; removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', function () { removeAnimal(a.id); });
+    tdRemove.appendChild(removeBtn);
+    tr.appendChild(tdRemove);
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+document.getElementById('animalSearch').addEventListener('input', renderSearch);
+document.getElementById('categorySelect').addEventListener('change', renderSelected);
+document.addEventListener('DOMContentLoaded', renderSelected);
 </script>
 {% endblock %}

@@ -7,7 +7,7 @@ from app import db
 from app.decorators import owner_required
 from app.forms import (
     AddToBreedingGroupForm, AnimalForm, BreedingGroupForm, BulkLocationForm,
-    BulkVaccinationForm, CalfBirthForm, CalfQualityForm, CastrationForm,
+    BulkVaccinationForm, CalfBirthForm, CalfQualityForm,
     ConfirmBredForm, DepartureForm, FeedoutForm, HealthRecordForm, ImportCSVForm,
     LastSeenCheckForm, SemenTestForm, WeightRecordForm, BullEPDForm,
 )
@@ -67,6 +67,7 @@ def list_animals():
     current_only = request.args.get("archived", "") != "1"
     has_calf = request.args.get("has_calf") == "1"
     flagged = request.args.get("flagged") == "1"
+    sale_bulls = request.args.get("sale_bulls") == "1"
     q = (request.args.get("q") or "").strip()
 
     query = Animal.query
@@ -78,6 +79,8 @@ def list_animals():
         query = query.filter_by(animal_type_id=type_id)
     if location_id:
         query = query.filter_by(location_id=location_id)
+    if sale_bulls:
+        query = query.filter_by(is_sale_bull=True)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -97,7 +100,7 @@ def list_animals():
     return render_template(
         "animals/list.html", animals=animals, types=types, locations=locations,
         type_id=type_id, location_id=location_id, current_only=current_only,
-        has_calf=has_calf, flagged=flagged, q=q,
+        has_calf=has_calf, flagged=flagged, sale_bulls=sale_bulls, q=q,
     )
 
 
@@ -117,10 +120,6 @@ def view_animal(animal_id):
         calf_form.birth_location_id.choices = _location_choices()
         calf_form.birth_location_id.data = animal.location_id or 0
 
-    castration_form = None
-    if animal.sex == SEX_MALE:
-        castration_form = CastrationForm(castration_date=date.today())
-
     epd_form = None
     semen_form = None
     if animal.is_bull:
@@ -137,7 +136,7 @@ def view_animal(animal_id):
 
     return render_template(
         "animals/detail.html", animal=animal, weight_form=weight_form, health_form=health_form,
-        last_seen_form=last_seen_form, calf_form=calf_form, castration_form=castration_form,
+        last_seen_form=last_seen_form, calf_form=calf_form,
         epd_form=epd_form, semen_form=semen_form, feedout_form=feedout_form,
         quality_form=quality_form, calving_ease_label=calving_ease_label,
         departure_form=DepartureForm(departure_date=date.today()),
@@ -695,21 +694,6 @@ def confirm_bred(exposure_id):
     return redirect(url_for("animals.view_breeding_group", group_id=exposure.breeding_group_id))
 
 
-# ---------------------------------------------------------------- Steers / castration --
-
-@animals_bp.route("/<int:animal_id>/castration", methods=["POST"])
-@login_required
-def record_castration(animal_id):
-    animal = Animal.query.get_or_404(animal_id)
-    form = CastrationForm()
-    if form.validate_on_submit():
-        animal.castration_date = form.castration_date.data
-        animal.castration_method = form.castration_method.data
-        db.session.commit()
-        flash("Castration recorded.", "success")
-    else:
-        flash("Could not save castration record - check the form.", "danger")
-    return redirect(url_for("animals.view_animal", animal_id=animal.id))
 
 
 # ---------------------------------------------------------------- Bulls: EPD / semen --

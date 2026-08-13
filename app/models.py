@@ -171,9 +171,6 @@ class Animal(db.Model):
     departure_reason = db.Column(db.String(20))
     departure_date = db.Column(db.Date)
 
-    castration_date = db.Column(db.Date)
-    castration_method = db.Column(db.String(80))
-
     purchase_date = db.Column(db.Date)
     purchase_price = db.Column(db.Numeric(10, 2))
 

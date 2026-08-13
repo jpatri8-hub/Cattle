@@ -84,10 +84,18 @@ def new_sale():
         flash("Add a sale category before recording a sale.", "warning")
 
     sellable = Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all()
-    animals_by_type = {}
-    for a in sellable:
-        animals_by_type.setdefault(a.animal_type, []).append(a)
-    animals_by_type = dict(sorted(animals_by_type.items(), key=lambda kv: kv[0].name if kv[0] else ""))
+    animals_data = [
+        {
+            "id": a.id,
+            "display_id": a.display_id,
+            "name": a.name or "",
+            "type_id": a.animal_type_id or 0,
+            "type_name": a.animal_type.name if a.animal_type else "Unknown type",
+            "location": a.location.display_name if a.location else "-",
+            "current_weight": float(a.current_weight) if a.current_weight else None,
+        }
+        for a in sellable
+    ]
 
     if request.method == "GET":
         form.sale_date.data = date.today()
@@ -135,7 +143,7 @@ def new_sale():
                     return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
     return render_template(
-        "sales/form.html", form=form, animals_by_type=animals_by_type, preselected=preselected,
+        "sales/form.html", form=form, animals_data=animals_data, preselected=preselected,
         truckload_category_id=truckload_category.id if truckload_category else None,
     )
 

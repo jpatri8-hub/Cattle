@@ -99,22 +99,6 @@
     </div>
     {% endif %}
 
-    {% if animal.sex == 'male' and 'Calf' in (animal.animal_type.name if animal.animal_type else '') %}
-    <div class="card card-dashboard p-3 mt-3">
-      <h5>Castration</h5>
-      {% if animal.castration_date %}
-      <p class="mb-0">Castrated {{ animal.castration_date }} ({{ animal.castration_method or "method not recorded" }})</p>
-      {% else %}
-      <form method="post" action="{{ url_for('animals.record_castration', animal_id=animal.id) }}" class="row g-2 align-items-end">
-        {{ castration_form.hidden_tag() }}
-        <div class="col-auto">{{ castration_form.castration_date.label(class="form-label") }} {{ castration_form.castration_date(class="form-control") }}</div>
-        <div class="col-auto">{{ castration_form.castration_method.label(class="form-label") }} {{ castration_form.castration_method(class="form-control", placeholder="e.g. banding") }}</div>
-        <div class="col-auto">{{ castration_form.submit(class="btn btn-outline-success") }}</div>
-      </form>
-      {% endif %}
-    </div>
-    {% endif %}
-
     {% if animal.is_bull %}
     <div class="card card-dashboard p-3 mt-3">
       <h5>EPDs</h5>
