@@ -3,11 +3,12 @@ from datetime import date, timedelta
 
 from app.models import (
     Animal, AnimalType, AnimalTypeCostRate, BreedingGroup, CALF_QUALITY_SCALE,
-    CalfRecord, DEPARTURE_CULLED, ExposureRecord, FeedoutRecord, GRADE_SCALE, SEX_MALE,
+    CalfRecord, ExposureRecord, FeedoutRecord, GRADE_SCALE, Sale, SaleCategory,
 )
 
 
 DAM_COST_DAYS_AT_WEANING = 365  # ~12 months of the dam's daily rate, transferred to the calf at weaning
+CULL_BULL_SALE_CATEGORY_NAME = "cull bull sale"
 
 
 def _dam_weaning_transfer_amount(dam):
@@ -176,13 +177,22 @@ def feedout_rollup_by_parent(relation="sire"):
 
 
 def bulls_culled(year):
+    """Bulls sold under the "Cull Bull Sale" category during the year -
+    that sale category is the source of truth for culled bulls, not a
+    manual departure marking."""
     start, end = _year_bounds(year)
-    culled = Animal.query.filter(
-        Animal.sex == SEX_MALE,
-        Animal.departure_reason == DEPARTURE_CULLED,
-        Animal.departure_date >= start, Animal.departure_date <= end,
+    category = next(
+        (c for c in SaleCategory.query.all() if c.name.strip().lower() == CULL_BULL_SALE_CATEGORY_NAME), None
+    )
+    if not category:
+        return {"year": year, "count": 0}
+    sales = Sale.query.filter(
+        Sale.sale_category_id == category.id, Sale.sale_date >= start, Sale.sale_date <= end,
     ).all()
-    return {"year": year, "count": len([a for a in culled if a.is_bull])}
+    culled_bull_ids = {
+        line.animal_id for s in sales for line in s.lines if line.animal and line.animal.is_bull
+    }
+    return {"year": year, "count": len(culled_bull_ids)}
 
 
 def calf_performance_by_parent(relation="sire"):

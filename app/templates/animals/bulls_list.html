@@ -3,14 +3,19 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h2 class="mb-0">Bulls</h2>
-  <a href="{{ url_for('animals.list_bulls', low_bw=0 if low_bw else 1) }}" class="btn btn-sm {{ 'btn-info' if low_bw else 'btn-outline-info' }}">
-    {{ "Showing Low Birth Weight Only (CED≥ 5, BW≤ 1) ✕" if low_bw else "Low Birth Weight (CED≥ 5, BW≤ 1)" }}
-  </a>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('animals.list_bulls', low_bw=0 if low_bw else 1, cripple=1 if cripple else 0) }}" class="btn btn-sm {{ 'btn-info' if low_bw else 'btn-outline-info' }}">
+      {{ "Showing Low Birth Weight Only (CED≥ 5, BW≤ 1) ✕" if low_bw else "Low Birth Weight (CED≥ 5, BW≤ 1)" }}
+    </a>
+    <a href="{{ url_for('animals.list_bulls', low_bw=1 if low_bw else 0, cripple=0 if cripple else 1) }}" class="btn btn-sm {{ 'btn-info' if cripple else 'btn-outline-info' }}">
+      {{ "Showing Cripple Only ✕" if cripple else "Cripple" }}
+    </a>
+  </div>
 </div>
-<p class="text-muted small">Showing {{ bulls|length }} bull{{ "" if bulls|length == 1 else "s" }}. Sale Bulls are excluded from the Bull export.</p>
+<p class="text-muted small">Showing {{ bulls|length }} bull{{ "" if bulls|length == 1 else "s" }}. Sale Bulls are excluded from the Bull export. A Good semen test expires 6 months after the test date.</p>
 <div class="table-responsive">
 <table class="table table-sm bg-white align-middle">
-  <thead><tr><th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>CED</th><th>BW EPD</th><th>Latest Semen Test</th><th>Availability</th><th>Sale Bull</th></tr></thead>
+  <thead><tr><th>ID</th><th>Type</th><th>Age</th><th>Location</th><th>CED</th><th>BW EPD</th><th>Semen Status</th><th>Availability</th><th>Sale Bull</th><th>Cripple</th></tr></thead>
   <tbody>
     {% for b in bulls %}
     <tr>
@@ -20,7 +25,7 @@
       <td>{{ b.location.display_name if b.location else "-" }}</td>
       <td>{{ b.epd.ced if b.epd else "-" }}</td>
       <td>{{ b.epd.birth_weight_epd if b.epd else "-" }}</td>
-      <td>{% if b.latest_semen_test %}{{ b.latest_semen_test.result }} ({{ b.latest_semen_test.test_date }}){% else %}Not tested{% endif %}</td>
+      <td>{{ b.current_semen_status }}{% if b.latest_semen_test %} <small class="text-muted">({{ b.latest_semen_test.test_date }})</small>{% endif %}</td>
       <td>{% if b.is_rentable_available %}<span class="badge bg-success">Available</span>{% else %}<span class="badge bg-warning text-dark">{{ b.rental_unavailable_reason }}</span>{% endif %}</td>
       <td>
         <form method="post" action="{{ url_for('animals.toggle_sale_bull', animal_id=b.id) }}">
@@ -28,9 +33,15 @@
           <button class="btn btn-sm {{ 'btn-secondary' if b.is_sale_bull else 'btn-outline-secondary' }}">{{ "Yes ✕" if b.is_sale_bull else "Mark" }}</button>
         </form>
       </td>
+      <td>
+        <form method="post" action="{{ url_for('animals.toggle_cripple', animal_id=b.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm {{ 'btn-danger' if b.is_cripple else 'btn-outline-danger' }}">{{ "Yes ✕" if b.is_cripple else "Mark" }}</button>
+        </form>
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="9" class="text-muted">No bulls on farm.</td></tr>
+    <tr><td colspan="10" class="text-muted">No bulls on farm.</td></tr>
     {% endfor %}
   </tbody>
 </table>
