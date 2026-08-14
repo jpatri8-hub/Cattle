@@ -766,7 +766,7 @@ def export_bulls():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "ID", "Location", "CED EPD", "Birth Weight EPD", "Semen Status",
+        "ID", "Location", "CED EPD", "Birth Weight EPD",
         "Availability", "Renter", "Rental Start", "Rental End", "Rental Status",
     ])
     for b in bulls:
@@ -784,7 +784,6 @@ def export_bulls():
             b.location.display_name if b.location else "",
             b.epd.ced if b.epd else "",
             b.epd.birth_weight_epd if b.epd else "",
-            b.current_semen_status,
             "Available" if b.is_rentable_available else (b.rental_unavailable_reason or ""),
             rental.customer.name if show_rental else "",
             rental.start_date.isoformat() if show_rental else "",

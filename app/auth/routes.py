@@ -64,6 +64,8 @@ def new_user():
             db.session.commit()
             flash(f"User {user.name} created.", "success")
             return redirect(url_for("auth.users"))
+    elif request.method == "POST":
+        flash("Could not save the user - check the errors below.", "danger")
 
     return render_template("auth/user_form.html", form=form, title="New User")
 
@@ -95,5 +97,7 @@ def edit_user(user_id):
             db.session.commit()
             flash(f"User {user.name} updated.", "success")
             return redirect(url_for("auth.users"))
+    elif request.method == "POST":
+        flash("Could not save the user - check the errors below.", "danger")
 
     return render_template("auth/user_form.html", form=form, title=f"Edit {user.name}")
