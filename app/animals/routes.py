@@ -177,6 +177,7 @@ def new_animal():
                 brand_type=form.brand_type.data or None,
                 brand_number=brand_number,
                 is_sale_bull=form.is_sale_bull.data,
+                is_cripple=form.is_cripple.data,
                 notes=form.notes.data,
                 created_by_id=current_user.id,
             )
@@ -233,6 +234,7 @@ def edit_animal(animal_id):
             animal.brand_type = form.brand_type.data or None
             animal.brand_number = brand_number
             animal.is_sale_bull = form.is_sale_bull.data
+            animal.is_cripple = form.is_cripple.data
             animal.notes = form.notes.data
 
             if current_user.is_owner:
@@ -702,10 +704,13 @@ def confirm_bred(exposure_id):
 @login_required
 def list_bulls():
     low_bw = request.args.get("low_bw") == "1"
+    cripple = request.args.get("cripple") == "1"
     bulls = [a for a in Animal.query.filter_by(is_active=True, sex=SEX_MALE).order_by(Animal.tag_id).all() if a.is_bull]
     if low_bw:
         bulls = [b for b in bulls if b.is_low_birth_weight_candidate]
-    return render_template("animals/bulls_list.html", bulls=bulls, low_bw=low_bw)
+    if cripple:
+        bulls = [b for b in bulls if b.is_cripple]
+    return render_template("animals/bulls_list.html", bulls=bulls, low_bw=low_bw, cripple=cripple)
 
 
 @animals_bp.route("/<int:animal_id>/toggle-sale-bull", methods=["POST"])
@@ -716,6 +721,19 @@ def toggle_sale_bull(animal_id):
     db.session.commit()
     flash(
         f"{animal.display_id} marked as {'a Sale Bull (excluded from the Bull export).' if animal.is_sale_bull else 'no longer a Sale Bull.'}",
+        "success",
+    )
+    return redirect(request.referrer or url_for("animals.list_bulls"))
+
+
+@animals_bp.route("/<int:animal_id>/toggle-cripple", methods=["POST"])
+@login_required
+def toggle_cripple(animal_id):
+    animal = Animal.query.get_or_404(animal_id)
+    animal.is_cripple = not animal.is_cripple
+    db.session.commit()
+    flash(
+        f"{animal.display_id} marked as {'cripple (not available for rent).' if animal.is_cripple else 'no longer cripple.'}",
         "success",
     )
     return redirect(request.referrer or url_for("animals.list_bulls"))
@@ -748,7 +766,7 @@ def export_bulls():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "ID", "Location", "CED EPD", "Birth Weight EPD",
+        "ID", "Location", "CED EPD", "Birth Weight EPD", "Semen Status",
         "Availability", "Renter", "Rental Start", "Rental End", "Rental Status",
     ])
     for b in bulls:
@@ -766,6 +784,7 @@ def export_bulls():
             b.location.display_name if b.location else "",
             b.epd.ced if b.epd else "",
             b.epd.birth_weight_epd if b.epd else "",
+            b.current_semen_status,
             "Available" if b.is_rentable_available else (b.rental_unavailable_reason or ""),
             rental.customer.name if show_rental else "",
             rental.start_date.isoformat() if show_rental else "",

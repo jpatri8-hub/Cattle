@@ -21,15 +21,13 @@ TRANSFER_TRIGGER_CHOICES = [
     (TRANSFER_TRIGGER_WEANED, "When her first calf is weaned"),
 ]
 
-DEPARTURE_SOLD = "sold"
+DEPARTURE_SOLD = "sold"  # set automatically by the Sales flow - not a manual departure choice
 DEPARTURE_DECEASED = "deceased"
-DEPARTURE_CULLED = "culled"
+DEPARTURE_CULLED = "culled"  # legacy value; culled bulls are now tracked via the "Cull Bull Sale" category
 DEPARTURE_LOST = "lost"
 DEPARTURE_OTHER = "other"
 DEPARTURE_CHOICES = [
-    (DEPARTURE_SOLD, "Sold"),
     (DEPARTURE_DECEASED, "Deceased"),
-    (DEPARTURE_CULLED, "Culled"),
     (DEPARTURE_LOST, "Lost"),
     (DEPARTURE_OTHER, "Other"),
 ]
@@ -47,7 +45,9 @@ CONDITION_SCORE_CHOICES = ["Good", "Slim", "Poor"]
 SEMEN_GOOD = "Good"
 SEMEN_BAD = "Bad"
 SEMEN_RETEST = "Retest"
+SEMEN_NOT_TESTED = "Not Tested"
 SEMEN_RESULT_CHOICES = [SEMEN_GOOD, SEMEN_BAD, SEMEN_RETEST]
+SEMEN_TEST_VALID_DAYS = 183  # ~6 months - a Good result older than this no longer counts as current
 
 HEALTH_STATUS_CHOICES = ["Healthy", "Sick", "Injured", "Other"]
 
@@ -163,6 +163,7 @@ class Animal(db.Model):
     brand_type = db.Column(db.String(20))  # Hot Brand / Freeze Brand
     brand_number = db.Column(db.String(20), unique=True, index=True)
     is_sale_bull = db.Column(db.Boolean, default=False, nullable=False)
+    is_cripple = db.Column(db.Boolean, default=False, nullable=False)
 
     sire_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
     dam_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
@@ -284,6 +285,21 @@ class Animal(db.Model):
         return self.semen_tests[0] if self.semen_tests else None
 
     @property
+    def current_semen_status(self):
+        """One of SEMEN_NOT_TESTED / SEMEN_BAD / SEMEN_GOOD / SEMEN_RETEST. A
+        Good result older than SEMEN_TEST_VALID_DAYS no longer counts as
+        current and reads the same as never having been tested - it takes a
+        fresh test to clear, not just the passage of being "the latest"."""
+        test = self.latest_semen_test
+        if not test:
+            return SEMEN_NOT_TESTED
+        if test.result == SEMEN_GOOD:
+            if (date.today() - test.test_date).days > SEMEN_TEST_VALID_DAYS:
+                return SEMEN_NOT_TESTED
+            return SEMEN_GOOD
+        return test.result
+
+    @property
     def latest_rental(self):
         return self.rentals[0] if self.rentals else None
 
@@ -292,6 +308,8 @@ class Animal(db.Model):
         """Returns a reason string if a bull is unavailable for rent, else None."""
         if not self.is_bull:
             return None
+        if self.is_cripple:
+            return "Marked cripple"
         open_rental = next(
             (r for r in self.rentals if r.status in (RENTAL_BOOKED, RENTAL_ACTIVE)), None
         )
@@ -312,9 +330,9 @@ class Animal(db.Model):
             days_since = (date.today() - last_returned.actual_return_date).days
             if 0 <= days_since < RENTAL_UNAVAILABLE_HOLD_DAYS:
                 return f"Returned {days_since} day(s) ago (holds for {RENTAL_UNAVAILABLE_HOLD_DAYS} days)"
-        test = self.latest_semen_test
-        if test and test.result in (SEMEN_BAD, SEMEN_RETEST):
-            return f"Semen test result: {test.result}"
+        semen_status = self.current_semen_status
+        if semen_status != SEMEN_GOOD:
+            return f"Semen test: {semen_status}"
         return None
 
     @property
