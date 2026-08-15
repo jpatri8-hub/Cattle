@@ -11,7 +11,9 @@
     {% endif %}
   </h2>
   <div class="no-print">
+    {% if current_user.is_owner %}
     <a href="{{ url_for('animals.edit_animal', animal_id=animal.id) }}" class="btn btn-outline-primary">Edit</a>
+    {% endif %}
     {% if current_user.is_owner and animal.is_active %}
     <a href="{{ url_for('sales.new_sale', animal_id=animal.id) }}" class="btn btn-outline-success">Sell</a>
     {% endif %}
@@ -228,6 +230,7 @@
     </div>
     {% endif %}
 
+    {% if current_user.is_owner %}
     <div class="card card-dashboard p-3 mb-4">
       <h5>Weight History</h5>
       <table class="table table-sm">
@@ -310,6 +313,7 @@
         </form>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

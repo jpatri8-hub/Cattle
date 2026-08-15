@@ -1,6 +1,6 @@
 from datetime import date
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -197,6 +197,7 @@ def new_animal():
 
 @animals_bp.route("/<int:animal_id>/edit", methods=["GET", "POST"])
 @login_required
+@owner_required
 def edit_animal(animal_id):
     animal = Animal.query.get_or_404(animal_id)
     form = AnimalForm(obj=animal)
@@ -284,6 +285,7 @@ def delete_animal(animal_id):
 
 @animals_bp.route("/<int:animal_id>/weight", methods=["POST"])
 @login_required
+@owner_required
 def add_weight(animal_id):
     animal = Animal.query.get_or_404(animal_id)
     form = WeightRecordForm()
@@ -301,6 +303,7 @@ def add_weight(animal_id):
 
 @animals_bp.route("/<int:animal_id>/health", methods=["POST"])
 @login_required
+@owner_required
 def add_health(animal_id):
     animal = Animal.query.get_or_404(animal_id)
     form = HealthRecordForm()
@@ -338,10 +341,15 @@ def add_last_seen(animal_id):
 
 # ---------------------------------------------------------------- bulk operations --
 
+OWNER_ONLY_BULK_ACTIONS = {"move", "vaccinate", "semen_test", "sell", "create_breeding_group"}
+
+
 @animals_bp.route("/bulk", methods=["POST"])
 @login_required
 def bulk_action():
     action = request.form.get("action")
+    if action in OWNER_ONLY_BULK_ACTIONS and not current_user.is_owner:
+        abort(403)
     animal_ids = request.form.getlist("animal_ids", type=int)
     if not animal_ids:
         flash("Select at least one animal first.", "warning")
@@ -874,6 +882,7 @@ def list_feedlot():
 
 @animals_bp.route("/<int:animal_id>/feedout", methods=["POST"])
 @login_required
+@owner_required
 def add_feedout(animal_id):
     animal = Animal.query.get_or_404(animal_id)
     form = FeedoutForm()

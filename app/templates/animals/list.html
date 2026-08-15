@@ -91,6 +91,7 @@
 
   <div class="card card-dashboard p-2 mt-2 no-print">
     <div class="fw-semibold mb-2">Bulk actions on selected animals</div>
+    {% if current_user.is_owner %}
     <div class="row g-2 align-items-center mb-2">
       <div class="col-auto">
         <select name="location_id" class="form-select form-select-sm">
@@ -117,6 +118,7 @@
       <div class="col-auto"><input type="text" name="semen_test_notes" class="form-control form-control-sm" placeholder="Notes"></div>
       <div class="col-auto"><button type="submit" name="action" value="semen_test" class="btn btn-sm btn-outline-info">Add Semen Test</button></div>
     </div>
+    {% endif %}
     <div class="row g-2 align-items-center">
       <div class="col-auto"><input type="date" name="seen_date" class="form-control form-control-sm" value="{{ today }}" title="Date seen"></div>
       <div class="col-auto">
@@ -127,8 +129,8 @@
       </div>
       <div class="col-auto"><input type="text" name="seen_notes" class="form-control form-control-sm" placeholder="Notes"></div>
       <div class="col-auto"><button type="submit" name="action" value="mark_seen" class="btn btn-sm btn-outline-info">Mark Seen</button></div>
-      <div class="col-auto ms-auto"><button type="submit" name="action" value="sell" class="btn btn-sm btn-success">Sell Selected</button></div>
     </div>
+    {% if current_user.is_owner %}
     <div class="row g-2 align-items-center mt-2">
       <div class="col-auto">
         <select name="bg_location_id" class="form-select form-select-sm">
@@ -138,8 +140,10 @@
       </div>
       <div class="col-auto"><input type="date" name="bg_start_date" class="form-control form-control-sm" value="{{ today }}" title="Bulls in / start date"></div>
       <div class="col-auto"><button type="submit" name="action" value="create_breeding_group" class="btn btn-sm btn-outline-primary">Create Breeding Group (no bull yet)</button></div>
+      <div class="col-auto ms-auto"><button type="submit" name="action" value="sell" class="btn btn-sm btn-success">Sell Selected</button></div>
     </div>
-    <p class="text-muted small mt-2 mb-0">Check animals in the table above, then use the actions here. Semen tests only apply to selected animals that are bulls. "Mark Seen" logs a health status of Healthy for each selected animal. "Create Breeding Group" only applies to selected females and skips the rest - use it to line up a group of cows/heifers before you've picked which bull to run with them, then evaluate candidates via the group's Available Bulls list.</p>
+    {% endif %}
+    <p class="text-muted small mt-2 mb-0">Check animals in the table above, then use the actions here. "Mark Seen" logs a health status of Healthy for each selected animal.{% if current_user.is_owner %} Semen tests only apply to selected animals that are bulls. "Create Breeding Group" only applies to selected females and skips the rest - use it to line up a group of cows/heifers before you've picked which bull to run with them, then evaluate candidates via the group's Available Bulls list.{% endif %}</p>
   </div>
 </form>
 {% endblock %}
