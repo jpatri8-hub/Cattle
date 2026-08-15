@@ -59,6 +59,15 @@
       </tr>
       {% endfor %}
     </tbody>
+    <tfoot>
+      <tr class="fw-bold border-top">
+        <td>Total</td>
+        <td>{{ net_margin_totals.count }}</td>
+        <td>${{ "%.2f"|format(net_margin_totals.cost) }}</td>
+        <td>${{ "%.2f"|format(net_margin_totals.revenue) }}</td>
+        <td class="{{ 'text-success' if net_margin_totals.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(net_margin_totals.net) }}</td>
+      </tr>
+    </tfoot>
   </table>
   </div>
 </div>
@@ -81,7 +90,7 @@
   </div>
 </div>
 
-<a href="{{ url_for('reports.feedout_rollup') }}" class="btn btn-outline-secondary btn-sm mt-3">Feedout Grade &amp; ADG by Sire/Dam &rarr;</a>
+<a href="{{ url_for('reports.feedout_rollup') }}" class="btn btn-outline-secondary btn-sm mt-3">Feedout Grade &amp; ADG by Type/Sire/Dam &rarr;</a>
 <a href="{{ url_for('reports.calf_performance') }}" class="btn btn-outline-secondary btn-sm mt-3">Calf Performance by Sire/Dam &rarr;</a>
 <a href="{{ url_for('reports.registration') }}" class="btn btn-outline-secondary btn-sm mt-3">American Angus Registration Report &rarr;</a>
 {% endblock %}

@@ -416,6 +416,32 @@ def bulk_action():
         session["bulk_sale_ids"] = animal_ids
         return redirect(url_for("sales.new_sale"))
 
+    elif action == "create_breeding_group":
+        bg_location_id = request.form.get("bg_location_id", type=int)
+        bg_start_date = request.form.get("bg_start_date") or date.today().isoformat()
+        females = [a for a in animals if a.sex == SEX_FEMALE]
+        skipped = len(animals) - len(females)
+        location = Location.query.get(bg_location_id) if bg_location_id else None
+        if not location:
+            flash("Pick a location for the new breeding group.", "warning")
+        elif not females:
+            flash("None of the selected animals are female - pick cows/heifers to expose.", "warning")
+        else:
+            group = BreedingGroup(
+                location_id=location.id, start_date=date.fromisoformat(bg_start_date),
+                is_auto=False, created_by_id=current_user.id,
+            )
+            db.session.add(group)
+            db.session.flush()
+            for f in females:
+                db.session.add(ExposureRecord(breeding_group_id=group.id, animal_id=f.id))
+            db.session.commit()
+            msg = f"Created a breeding group with {len(females)} animal(s), no bull assigned yet."
+            if skipped:
+                msg += f" Skipped {skipped} non-female animal(s)."
+            flash(msg, "success")
+            return redirect(url_for("animals.view_breeding_group", group_id=group.id))
+
     else:
         flash("Unknown bulk action.", "danger")
 
@@ -766,7 +792,7 @@ def export_bulls():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "ID", "Location", "CED EPD", "Birth Weight EPD",
+        "ID", "Brand", "Location", "CED EPD", "Birth Weight EPD",
         "Availability", "Renter", "Rental Start", "Rental End", "Rental Status",
     ])
     for b in bulls:
@@ -781,6 +807,7 @@ def export_bulls():
                     show_rental = True
         writer.writerow([
             b.display_id,
+            b.brand_number or "",
             b.location.display_name if b.location else "",
             b.epd.ced if b.epd else "",
             b.epd.birth_weight_epd if b.epd else "",

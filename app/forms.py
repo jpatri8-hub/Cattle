@@ -166,7 +166,10 @@ class BreedingGroupForm(FlaskForm):
     location_id = SelectField("Location", coerce=int, validators=[DataRequired()])
     start_date = DateField("Bulls In (Start Date)", validators=[DataRequired()])
     end_date = DateField("Bulls Out (End Date)", validators=[Optional()])
-    bull_ids = SelectMultipleField("Bull(s)", coerce=int, validators=[DataRequired()])
+    bull_ids = SelectMultipleField(
+        "Bull(s) (optional - leave blank to evaluate bulls against this group later)",
+        coerce=int, validators=[Optional()],
+    )
     notes = TextAreaField("Notes", validators=[Optional()])
     submit = SubmitField("Save Breeding Group")
 

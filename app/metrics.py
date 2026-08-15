@@ -176,6 +176,36 @@ def feedout_rollup_by_parent(relation="sire"):
     return result
 
 
+def feedout_rollup_by_type():
+    """Same grade/ADG rollup as feedout_rollup_by_parent, but grouped by the
+    fed animal's own type (e.g. Steer, Commercial Bull Calf) instead of by
+    sire/dam."""
+    records = FeedoutRecord.query.all()
+    buckets = {}
+    for r in records:
+        animal = r.animal
+        if not animal or not animal.animal_type:
+            continue
+        atype = animal.animal_type
+        b = buckets.setdefault(atype, {"grades": [], "adgs": [], "count": 0})
+        b["count"] += 1
+        if r.steak_grade in GRADE_SCALE:
+            b["grades"].append(GRADE_SCALE[r.steak_grade])
+        adg = r.average_daily_gain
+        if adg:
+            b["adgs"].append(float(adg))
+    result = []
+    for atype, b in buckets.items():
+        result.append({
+            "animal_type": atype,
+            "count": b["count"],
+            "avg_grade_score": round(sum(b["grades"]) / len(b["grades"]), 2) if b["grades"] else None,
+            "avg_adg": round(sum(b["adgs"]) / len(b["adgs"]), 2) if b["adgs"] else None,
+        })
+    result.sort(key=lambda x: (x["avg_grade_score"] is None, -(x["avg_grade_score"] or 0)))
+    return result
+
+
 def bulls_culled(year):
     """Bulls sold under the "Cull Bull Sale" category during the year -
     that sale category is the source of truth for culled bulls, not a
