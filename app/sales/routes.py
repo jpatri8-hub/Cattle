@@ -245,9 +245,10 @@ def view_buyer(buyer_id):
 
 @sales_bp.route("/buyers/new", methods=["GET", "POST"])
 @login_required
-@owner_required
 def new_buyer():
+    # Not owner_required: Hands can add a customer while booking a rental.
     form = BuyerForm()
+    next_page = request.args.get("next")
     if form.validate_on_submit():
         buyer = Buyer(
             name=form.name.data,
@@ -259,11 +260,13 @@ def new_buyer():
         db.session.add(buyer)
         db.session.commit()
         flash(f"Buyer {buyer.name} added.", "success")
-        if request.args.get("next") == "rental":
+        if next_page == "rental":
             return redirect(url_for("rentals.new_rental"))
+        if not current_user.is_owner:
+            return redirect(url_for("rentals.list_rentals"))
         return redirect(url_for("sales.new_sale"))
 
-    return render_template("sales/buyer_form.html", form=form, title="New Buyer")
+    return render_template("sales/buyer_form.html", form=form, title="New Buyer", next=next_page)
 
 
 @sales_bp.route("/buyers/<int:buyer_id>/edit", methods=["GET", "POST"])

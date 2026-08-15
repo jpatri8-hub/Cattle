@@ -12,6 +12,10 @@
     <div class="col-12 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=3) }}</div>
   </div>
   {{ form.submit(class="btn btn-success") }}
+  {% if next == 'rental' or not current_user.is_owner %}
+  <a href="{{ url_for('rentals.new_rental') }}" class="btn btn-link">Cancel</a>
+  {% else %}
   <a href="{{ url_for('sales.list_buyers') }}" class="btn btn-link">Cancel</a>
+  {% endif %}
 </form>
 {% endblock %}
