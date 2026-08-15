@@ -1,8 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Feedout Rollup - Cattle Manager{% endblock %}
 {% block content %}
-<h2 class="mb-3">Feedout Grade &amp; Efficiency by Parent</h2>
-<p class="text-muted">Average steak grade (Prime=4, Choice=3, Select=2, Standard=1) and average daily gain on feed, rolled up by sire and by dam.</p>
+<h2 class="mb-3">Feedout Grade &amp; Efficiency</h2>
+<p class="text-muted">Average steak grade (Prime=4, Choice=3, Select=2, Standard=1) and average daily gain on feed, rolled up by sire, by dam, and by animal type.</p>
+
+<div class="card card-dashboard p-3 mb-4">
+  <h5>By Animal Type</h5>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Type</th><th>Count</th><th>Avg Grade Score</th><th>Avg ADG</th></tr></thead>
+    <tbody>
+      {% for r in by_type %}
+      <tr>
+        <td>{{ r.animal_type.name }}</td>
+        <td>{{ r.count }}</td>
+        <td>{{ r.avg_grade_score if r.avg_grade_score is not none else "-" }}</td>
+        <td>{{ r.avg_adg if r.avg_adg is not none else "-" }}</td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="text-muted">No feedout records yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h4 class="mb-3">By Parent</h4>
 <div class="row">
   <div class="col-md-6 mb-4">
     <div class="card card-dashboard p-3">

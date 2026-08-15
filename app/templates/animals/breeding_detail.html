@@ -4,7 +4,10 @@
 <h2 class="mb-1">{{ group.location.name }} <small class="text-muted">{{ group.start_date }} &rarr; {{ group.end_date or "present" }}</small>
   {% if group.is_auto %}<span class="badge bg-info text-dark">Auto-tracked</span>{% else %}<span class="badge bg-secondary">Manual</span>{% endif %}
 </h2>
-<p>Bull(s): {% for b in group.bulls %}<a href="{{ url_for('animals.view_animal', animal_id=b.id) }}">{{ b.display_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+<p>Bull(s):
+  {% if group.bulls %}{% for b in group.bulls %}<a href="{{ url_for('animals.view_animal', animal_id=b.id) }}">{{ b.display_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  {% else %}<span class="text-muted">None assigned yet - use "Available Bulls" below to pick one for this group.</span>{% endif %}
+</p>
 {% if group.notes %}<p class="text-muted">{{ group.notes }}</p>{% endif %}
 {% if group.is_auto %}<p class="text-muted small">This group updates itself as animals move in and out of {{ group.location.name }}. It'll close automatically once no bull remains there with a female.</p>{% endif %}
 

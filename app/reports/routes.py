@@ -8,7 +8,7 @@ from app import db
 from app.decorators import owner_required
 from app.metrics import (
     bull_lifetime_revenue, bulls_culled, calf_performance_by_parent, death_loss_rate,
-    feedout_rollup_by_parent, net_margin_by_type, pregnancy_rate, weaning_rate,
+    feedout_rollup_by_parent, feedout_rollup_by_type, net_margin_by_type, pregnancy_rate, weaning_rate,
 )
 from app.models import Animal, CalfRecord, SEX_MALE
 from app.reports.registration import (
@@ -33,10 +33,18 @@ def overview():
     bull_revenue = sorted(
         ((b, bull_lifetime_revenue(b)) for b in bulls), key=lambda x: -x[1]
     )
+    net_margin = net_margin_by_type()
+    net_margin_totals = {
+        "count": sum(m["count"] for m in net_margin.values()),
+        "cost": round(sum(m["cost"] for m in net_margin.values()), 2),
+        "revenue": round(sum(m["revenue"] for m in net_margin.values()), 2),
+        "net": round(sum(m["net"] for m in net_margin.values()), 2),
+    }
     return render_template(
         "reports/overview.html",
         year=year,
-        net_margin=net_margin_by_type(),
+        net_margin=net_margin,
+        net_margin_totals=net_margin_totals,
         weaning=weaning_rate(year),
         pregnancy=pregnancy_rate(year),
         death_loss=death_loss_rate(year),
@@ -51,6 +59,7 @@ def feedout_rollup():
         "reports/feedout.html",
         by_sire=feedout_rollup_by_parent("sire"),
         by_dam=feedout_rollup_by_parent("dam"),
+        by_type=feedout_rollup_by_type(),
     )
 
 
