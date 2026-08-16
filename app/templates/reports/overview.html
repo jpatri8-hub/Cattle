@@ -4,6 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="mb-0">Reports</h2>
   <form class="d-flex gap-2" method="get">
+    {% if show_departed %}<input type="hidden" name="show_departed" value="1">{% endif %}
     <select name="year" class="form-select" onchange="this.form.submit()">
       {% for y in range(year + 2, year - 6, -1) %}
       <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
@@ -73,21 +74,30 @@
 </div>
 
 <div class="card card-dashboard p-3">
-  <h5>Bull Lifetime Revenue <small class="text-muted">(rentals + sales)</small></h5>
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+    <h5 class="mb-0">Bull Lifetime Revenue <small class="text-muted">(rentals + sales)</small></h5>
+    <a href="{{ url_for('reports.overview', year=year, show_departed=0 if show_departed else 1) }}" class="btn btn-sm btn-outline-secondary">
+      {{ "Showing Off-Farm Bulls Too ✕" if show_departed else "View Off-Farm Bulls" }}
+    </a>
+  </div>
   <div class="table-responsive">
   <table class="table table-sm mb-0">
-    <thead><tr><th>Bull</th><th>Status</th><th>Lifetime Revenue</th></tr></thead>
+    <thead><tr><th>Bull</th><th>Status</th><th>Lifetime Revenue</th><th>Lifetime Cost</th></tr></thead>
     <tbody>
-      {% for bull, revenue in bull_revenue %}
-      <tr>
-        <td><a href="{{ url_for('animals.view_animal', animal_id=bull.id) }}">{{ bull.display_id }}</a></td>
+      {% for bull, revenue, cost in bull_revenue %}
+      <tr class="{{ 'extra-bull-row d-none' if loop.index > 5 }}">
+        <td><a href="{{ url_for('animals.view_animal', animal_id=bull.id, back=request.full_path) }}">{{ bull.display_id }}</a></td>
         <td>{{ "On Farm" if bull.is_active else bull.departure_reason }}</td>
         <td>${{ "%.2f"|format(revenue) }}</td>
+        <td>${{ "%.2f"|format(cost) }}</td>
       </tr>
-      {% else %}<tr><td colspan="3" class="text-muted">No bulls yet.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="4" class="text-muted">No bulls yet.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
+  {% if bull_revenue|length > 5 %}
+  <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="document.querySelectorAll('.extra-bull-row').forEach(r=>r.classList.remove('d-none'));this.remove()">Expand All ({{ bull_revenue|length - 5 }} more)</button>
+  {% endif %}
 </div>
 
 <a href="{{ url_for('reports.feedout_rollup') }}" class="btn btn-outline-secondary btn-sm mt-3">Feedout Grade &amp; ADG by Type/Sire/Dam &rarr;</a>

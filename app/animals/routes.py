@@ -97,8 +97,15 @@ def list_animals():
     types = AnimalType.query.order_by(AnimalType.name).all()
     locations = Location.query.filter_by(is_active=True).order_by(Location.name).all()
 
+    groups = {}
+    for a in animals:
+        type_name = a.animal_type.name if a.animal_type else "No Type"
+        groups.setdefault(type_name, []).append(a)
+    grouped_animals = [(name, groups[name]) for name in sorted(groups.keys())]
+
     return render_template(
-        "animals/list.html", animals=animals, types=types, locations=locations,
+        "animals/list.html", animals=animals, grouped_animals=grouped_animals,
+        types=types, locations=locations,
         type_id=type_id, location_id=location_id, current_only=current_only,
         has_calf=has_calf, flagged=flagged, sale_bulls=sale_bulls, q=q,
     )
@@ -200,6 +207,7 @@ def new_animal():
 @owner_required
 def edit_animal(animal_id):
     animal = Animal.query.get_or_404(animal_id)
+    back = request.values.get("back") or None
     form = AnimalForm(obj=animal)
     form.animal_type_id.choices = _type_choices(active_only=False)
     form.location_id.choices = _location_choices()
@@ -244,9 +252,9 @@ def edit_animal(animal_id):
 
             db.session.commit()
             flash(f"Animal {animal.display_id} updated.", "success")
-            return redirect(url_for("animals.view_animal", animal_id=animal.id))
+            return redirect(url_for("animals.view_animal", animal_id=animal.id, back=back))
 
-    return render_template("animals/form.html", form=form, title=f"Edit {animal.display_id}")
+    return render_template("animals/form.html", form=form, title=f"Edit {animal.display_id}", back=back)
 
 
 @animals_bp.route("/<int:animal_id>/departure", methods=["POST"])

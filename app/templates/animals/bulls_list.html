@@ -19,7 +19,7 @@
   <tbody>
     {% for b in bulls %}
     <tr>
-      <td><a href="{{ url_for('animals.view_animal', animal_id=b.id) }}">{{ b.display_id }}</a></td>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=b.id, back=request.full_path) }}">{{ b.display_id }}</a></td>
       <td>{{ b.animal_type.name if b.animal_type else "-" }}</td>
       <td>{{ b.age_display }}</td>
       <td>{{ b.location.display_name if b.location else "-" }}</td>

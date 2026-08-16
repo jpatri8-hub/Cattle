@@ -7,7 +7,7 @@ from flask_login import login_required
 from app import db
 from app.decorators import owner_required
 from app.metrics import (
-    bull_lifetime_revenue, bulls_culled, calf_performance_by_parent, death_loss_rate,
+    bull_lifetime_revenue, bulls_culled, calf_performance_by_parent, cost_for_animal, death_loss_rate,
     feedout_rollup_by_parent, feedout_rollup_by_type, net_margin_by_type, pregnancy_rate, weaning_rate,
 )
 from app.models import Animal, CalfRecord, SEX_MALE
@@ -29,9 +29,13 @@ def _guard():
 @reports_bp.route("/")
 def overview():
     year = request.args.get("year", date.today().year, type=int)
-    bulls = [a for a in Animal.query.filter_by(sex=SEX_MALE).order_by(Animal.tag_id).all() if a.is_bull]
+    show_departed = request.args.get("show_departed") == "1"
+    bull_query = Animal.query.filter_by(sex=SEX_MALE)
+    if not show_departed:
+        bull_query = bull_query.filter_by(is_active=True)
+    bulls = [a for a in bull_query.order_by(Animal.tag_id).all() if a.is_bull]
     bull_revenue = sorted(
-        ((b, bull_lifetime_revenue(b)) for b in bulls), key=lambda x: -x[1]
+        ((b, bull_lifetime_revenue(b), cost_for_animal(b)) for b in bulls), key=lambda x: -x[1]
     )
     net_margin = net_margin_by_type()
     net_margin_totals = {
@@ -50,6 +54,7 @@ def overview():
         death_loss=death_loss_rate(year),
         culled=bulls_culled(year),
         bull_revenue=bull_revenue,
+        show_departed=show_departed,
     )
 
 

@@ -8,7 +8,7 @@
   <tbody>
     {% for c in cows %}
     <tr>
-      <td><a href="{{ url_for('animals.view_animal', animal_id=c.id) }}">{{ c.display_id }}</a></td>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=c.id, back=request.full_path) }}">{{ c.display_id }}</a></td>
       <td>{{ c.animal_type.name if c.animal_type else "-" }}</td>
       <td>{{ c.age_display }}</td>
       <td>{{ c.location.display_name if c.location else "-" }}</td>
