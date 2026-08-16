@@ -17,4 +17,4 @@ services:
 
 databases:
   - name: cattle-manager-db
-    plan: free
+    plan: basic-256mb
