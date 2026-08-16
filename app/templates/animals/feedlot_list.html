@@ -8,7 +8,7 @@
   <tbody>
     {% for f in records %}
     <tr>
-      <td><a href="{{ url_for('animals.view_animal', animal_id=f.animal_id) }}">{{ f.animal.display_id if f.animal else '-' }}</a></td>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=f.animal_id, back=request.full_path) }}">{{ f.animal.display_id if f.animal else '-' }}</a></td>
       <td>{{ f.start_date }}</td>
       <td>{{ f.start_age_display or "-" }} / {{ f.start_weight or "-" }} lbs</td>
       <td>{{ f.days_on_feed or "-" }}</td>

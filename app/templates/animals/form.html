@@ -4,6 +4,7 @@
 <h2>{{ title }}</h2>
 <form method="post" class="card card-dashboard p-4" novalidate>
   {{ form.hidden_tag() }}
+  {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
   <div class="row">
     <div class="col-md-4 mb-3">{{ form.tag_id.label(class="form-label") }} {{ form.tag_id(class="form-control", placeholder="Leave blank for a temp ID") }}</div>
     <div class="col-md-4 mb-3">{{ form.name.label(class="form-label") }} {{ form.name(class="form-control") }}</div>
@@ -32,6 +33,6 @@
     <div class="col-12 mb-3">{{ form.notes.label(class="form-label") }} {{ form.notes(class="form-control", rows=3) }}</div>
   </div>
   {{ form.submit(class="btn btn-success") }}
-  <a href="{{ url_for('animals.list_animals') }}" class="btn btn-link">Cancel</a>
+  <a href="{{ back or url_for('animals.list_animals') }}" class="btn btn-link">Cancel</a>
 </form>
 {% endblock %}

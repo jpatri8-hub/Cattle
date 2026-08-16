@@ -58,33 +58,51 @@
   </div>
 </form>
 
-<p class="text-muted mb-2">Showing {{ animals|length }} animal{{ "" if animals|length == 1 else "s" }}.</p>
-
-<div class="table-responsive">
-<table class="table table-sm bg-white align-middle table-compact">
-  <thead>
-    <tr>
-      <th><input type="checkbox" onclick="document.querySelectorAll('.animal-check').forEach(c=>c.checked=this.checked)"></th>
-      <th>ID</th><th>Has Calf</th><th>Type</th><th>Age</th><th>Location</th><th>Notes</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for a in animals %}
-    <tr class="{{ 'table-warning' if a.not_seen_flagged }}">
-      <td><input type="checkbox" class="animal-check" name="animal_ids" value="{{ a.id }}" form="bulkForm"></td>
-      <td><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
-      <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>
-      <td>{{ a.animal_type.name if a.animal_type else "-" }}</td>
-      <td>{{ a.age_display }}</td>
-      <td>{{ a.location.display_name if a.location else "-" }}</td>
-      <td>{{ a.notes or "-" }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="7" class="text-muted">No animals found.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+  <p class="text-muted mb-0">Showing {{ animals|length }} animal{{ "" if animals|length == 1 else "s" }} in {{ grouped_animals|length }} group{{ "" if grouped_animals|length == 1 else "s" }}.</p>
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.type-group-collapse').forEach(c=>new bootstrap.Collapse(c,{show:true}))">Expand All</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.type-group-collapse').forEach(c=>new bootstrap.Collapse(c,{hide:true}))">Collapse All</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.animal-check').forEach(c=>c.checked=true)">Select All</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.animal-check').forEach(c=>c.checked=false)">Select None</button>
+  </div>
 </div>
+
+{% for type_name, group_animals in grouped_animals %}
+{% set group_key = "group-" ~ loop.index %}
+<div class="card card-dashboard mb-2">
+  <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#{{ group_key }}" role="button">
+    <span class="fw-semibold">{{ type_name }} <span class="badge bg-secondary ms-1">{{ group_animals|length }}</span></span>
+    <span class="text-muted small">&#9660;</span>
+  </div>
+  <div class="collapse show type-group-collapse" id="{{ group_key }}">
+    <div class="table-responsive">
+    <table class="table table-sm bg-white align-middle table-compact mb-0">
+      <thead>
+        <tr>
+          <th><input type="checkbox" onclick="this.closest('table').querySelectorAll('.animal-check').forEach(c=>c.checked=this.checked)"></th>
+          <th>ID</th><th>Has Calf</th><th>Age</th><th>Location</th><th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in group_animals %}
+        <tr class="{{ 'table-warning' if a.not_seen_flagged }}">
+          <td><input type="checkbox" class="animal-check" name="animal_ids" value="{{ a.id }}" form="bulkForm"></td>
+          <td><a href="{{ url_for('animals.view_animal', animal_id=a.id, back=request.full_path) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
+          <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>
+          <td>{{ a.age_display }}</td>
+          <td>{{ a.location.display_name if a.location else "-" }}</td>
+          <td>{{ a.notes or "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">No animals found.</p>
+{% endfor %}
 
 <form method="post" action="{{ url_for('animals.bulk_action') }}" id="bulkForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

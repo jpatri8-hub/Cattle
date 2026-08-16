@@ -12,7 +12,7 @@
   </h2>
   <div class="no-print">
     {% if current_user.is_owner %}
-    <a href="{{ url_for('animals.edit_animal', animal_id=animal.id) }}" class="btn btn-outline-primary">Edit</a>
+    <a href="{{ url_for('animals.edit_animal', animal_id=animal.id, back=request.args.get('back')) }}" class="btn btn-outline-primary">Edit</a>
     {% endif %}
     {% if current_user.is_owner and animal.is_active %}
     <a href="{{ url_for('sales.new_sale', animal_id=animal.id) }}" class="btn btn-outline-success">Sell</a>

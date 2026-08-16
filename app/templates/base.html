@@ -47,8 +47,9 @@
   {% endwith %}
 
   {% if current_user.is_authenticated and request.endpoint != 'main.dashboard' %}
+  {% set back_url = request.args.get('back') %}
   <div class="no-print mb-2">
-    <a href="javascript:history.back()" class="btn btn-sm btn-outline-secondary">&larr; Back</a>
+    <a href="{{ back_url if back_url else 'javascript:history.back()' }}" class="btn btn-sm btn-outline-secondary">&larr; Back</a>
   </div>
   {% endif %}
 
