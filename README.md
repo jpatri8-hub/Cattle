@@ -162,10 +162,13 @@ This is meant to keep evolving with the operation — nothing here is final:
   `app/reports/routes.py` + `app/templates/reports/`.
 - **Lifecycle rules** (auto-transfer, "not seen" flagging, rental
   availability, semen-test-due alerts) live in `app/lifecycle.py`.
-- **Data model**: `app/models.py`. The app runs `db.create_all()` via
-  `seed.py`; for schema changes after you have real data, use
-  `flask db migrate` / `flask db upgrade` (Flask-Migrate is already wired
-  up in `app/__init__.py`).
+- **Data model**: `app/models.py`. On every startup the app calls
+  `sync_schema()` (`app/db_sync.py`), which creates any new tables and adds
+  any new nullable columns it finds missing from the live database, without
+  ever touching existing data - so additive schema changes (new columns,
+  new tables) go live automatically on the next deploy, no manual migration
+  step required. A column that needs to be `NOT NULL` or that removes/
+  renames something still needs a one-off manual step against the database.
 
 ## Project layout
 

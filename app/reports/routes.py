@@ -7,8 +7,9 @@ from flask_login import login_required
 from app import db
 from app.decorators import owner_required
 from app.metrics import (
-    bull_lifetime_revenue, bulls_culled, calf_performance_by_parent, cost_for_animal, death_loss_rate,
-    feedout_rollup_by_parent, feedout_rollup_by_type, net_margin_by_type, pregnancy_rate, weaning_rate,
+    animals_needing_attention, bull_lifetime_revenue, bulls_culled, calf_performance_by_parent,
+    cost_for_animal, death_loss_rate, feedout_rollup_by_parent, feedout_rollup_by_type,
+    INITIAL_LOAD_COST_CUTOVER, net_margin_by_type, pregnancy_rate, weaning_rate,
 )
 from app.models import Animal, CalfRecord, SEX_MALE
 from app.reports.registration import (
@@ -55,6 +56,7 @@ def overview():
         culled=bulls_culled(year),
         bull_revenue=bull_revenue,
         show_departed=show_departed,
+        initial_load_cutover=INITIAL_LOAD_COST_CUTOVER,
     )
 
 
@@ -65,6 +67,13 @@ def feedout_rollup():
         by_sire=feedout_rollup_by_parent("sire"),
         by_dam=feedout_rollup_by_parent("dam"),
         by_type=feedout_rollup_by_type(),
+    )
+
+
+@reports_bp.route("/health-watch")
+def health_watch():
+    return render_template(
+        "reports/health_watch.html", groups=animals_needing_attention(),
     )
 
 

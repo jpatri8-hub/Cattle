@@ -463,6 +463,8 @@ class CalfRecord(db.Model):
 
     weaned_date = db.Column(db.Date)
     weaning_weight = db.Column(db.Numeric(7, 2))
+    scrotum_circumference = db.Column(db.Numeric(5, 2))  # cm, bull calves only
+    hip_height = db.Column(db.Numeric(5, 2))  # inches, at weaning, both sexes
     quality = db.Column(db.String(10))  # Good / Average / Poor, see CALF_QUALITY_SCALE
 
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))

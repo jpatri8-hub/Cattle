@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Health Watch - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-3">Health Watch</h2>
+<p class="text-muted">Animals currently on the farm whose most recent inventory check flagged them Sick, Injured, or Other, grouped by location.</p>
+
+{% for location_name, entries in groups %}
+<div class="card card-dashboard p-3 mb-3">
+  <h5>{{ location_name }} <span class="badge bg-secondary ms-1">{{ entries|length }}</span></h5>
+  <div class="table-responsive">
+  <table class="table table-sm mb-0">
+    <thead><tr><th>ID</th><th>Status</th><th>Date</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td><a href="{{ url_for('animals.view_animal', animal_id=e.animal.id, back=request.full_path) }}">{{ e.animal.display_id }}</a></td>
+        <td><span class="badge {{ 'bg-danger' if e.status == 'Injured' else 'bg-warning text-dark' }}">{{ e.status }}</span></td>
+        <td>{{ e.date }}</td>
+        <td>{{ e.notes or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">No animals currently flagged Sick, Injured, or Other.</p>
+{% endfor %}
+{% endblock %}
