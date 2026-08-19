@@ -45,7 +45,7 @@
 
 <div class="card card-dashboard p-3 mb-4">
   <h5>Cost / Revenue / Net Margin by Animal Type</h5>
-  <p class="text-muted small">Cost = $/day rate x days on farm (using the rate history in effect on each day) plus purchase price, if recorded. A calf accrues no cost of its own until weaned - at that point 12 months of her dam's daily rate transfers from the dam's cost to the calf's as a one-time lump sum (a real, zero-sum transfer - the combined dam+calf total is unchanged), and the calf's own $/day cost starts accruing from the weaned date forward. Animals from the initial herd load that never got a weaning date recorded accrue cost starting {{ initial_load_cutover }} instead of staying at $0 forever.</p>
+  <p class="text-muted small">Cost = $/day rate x days on farm (using the rate history in effect on each day) plus purchase price, if recorded. A calf accrues no cost of its own until weaned - at that point 12 months of her dam's daily rate transfers from the dam's cost to the calf's as a one-time lump sum (a real, zero-sum transfer - the combined dam+calf total is unchanged), and the calf's own $/day cost starts accruing from the weaned date forward. Animals from the initial herd load with no known birth date (or, for calves, no weaning date) accrue cost starting {{ initial_load_cutover }} instead of staying near $0 forever.</p>
   <div class="table-responsive">
   <table class="table table-sm mb-0">
     <thead><tr><th>Type</th><th>Count</th><th>Total Cost</th><th>Total Revenue</th><th>Net</th></tr></thead>
