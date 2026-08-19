@@ -10,6 +10,15 @@ from app.models import (
 DAM_COST_DAYS_AT_WEANING = 365  # ~12 months of the dam's daily rate, transferred to the calf at weaning
 CULL_BULL_SALE_CATEGORY_NAME = "cull bull sale"
 
+# Animals that were already on the farm when this app went live never got a
+# real weaning date recorded, so cost_for_animal's "no cost until weaned"
+# rule would otherwise leave them at $0 forever. For that one-time initial
+# herd load only (born before this date, still missing a weaned_date), cost
+# accrues starting on this date instead. Any calf born on/after this date
+# still follows the normal rule - no cost until an actual weaning date is
+# recorded on its calf record.
+INITIAL_LOAD_COST_CUTOVER = date(2026, 4, 1)
+
 
 def _dam_weaning_transfer_amount(dam):
     """The one-time lump (12 months of her current type's daily rate) that
@@ -40,9 +49,13 @@ def cost_for_animal(animal, start=None, end=None):
     dam_credit = 0.0
     if calf_record:
         if not calf_record.weaned_date:
-            return 0.0
-        start = start or calf_record.weaned_date
-        dam_credit = _dam_weaning_transfer_amount(calf_record.dam)
+            is_initial_load = animal.birth_date and animal.birth_date < INITIAL_LOAD_COST_CUTOVER
+            if not is_initial_load:
+                return 0.0
+            start = start or INITIAL_LOAD_COST_CUTOVER
+        else:
+            start = start or calf_record.weaned_date
+            dam_credit = _dam_weaning_transfer_amount(calf_record.dam)
 
     own_start = start or animal.birth_date or (animal.created_at.date() if animal.created_at else None)
     own_end = end or animal.departure_date or date.today()
@@ -59,6 +72,9 @@ def cost_for_animal(animal, start=None, end=None):
             if seg_start <= seg_end:
                 days = (seg_end - seg_start).days + 1
                 own_cost += days * float(r.rate_per_day)
+
+    if animal.purchase_price:
+        own_cost += float(animal.purchase_price)
 
     weaned_calf_count = sum(1 for c in animal.calf_records_as_dam if c.weaned_date)
     dam_debit = weaned_calf_count * _dam_weaning_transfer_amount(animal) if weaned_calf_count else 0.0
@@ -223,6 +239,29 @@ def bulls_culled(year):
         line.animal_id for s in sales for line in s.lines if line.animal and line.animal.is_bull
     }
     return {"year": year, "count": len(culled_bull_ids)}
+
+
+FLAGGED_HEALTH_STATUSES = ("Sick", "Injured", "Other")
+
+
+def animals_needing_attention():
+    """Active animals whose most recent last-seen check flagged them Sick,
+    Injured, or Other, grouped by location. An animal with no checks at all,
+    or whose latest check was Healthy, is left off the list."""
+    animals = Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all()
+    groups = {}
+    for a in animals:
+        latest_check = a.last_seen_checks[0] if a.last_seen_checks else None
+        if not latest_check or latest_check.health_status not in FLAGGED_HEALTH_STATUSES:
+            continue
+        location_name = a.location.display_name if a.location else "No Location"
+        groups.setdefault(location_name, []).append({
+            "animal": a,
+            "status": latest_check.health_status,
+            "notes": latest_check.notes,
+            "date": latest_check.date_recorded,
+        })
+    return [(name, groups[name]) for name in sorted(groups.keys())]
 
 
 def calf_performance_by_parent(relation="sire"):

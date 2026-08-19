@@ -50,6 +50,10 @@
     <input type="checkbox" class="form-check-input" name="sale_bulls" value="1" id="saleBulls" {% if sale_bulls %}checked{% endif %} onchange="this.form.submit()">
     <label class="form-check-label" for="saleBulls">Sale Bulls</label>
   </div>
+  <div class="col-auto form-check pt-2">
+    <input type="checkbox" class="form-check-input" name="cripple" value="1" id="cripple" {% if cripple %}checked{% endif %} onchange="this.form.submit()">
+    <label class="form-check-label" for="cripple">Cripple</label>
+  </div>
   <div class="col-auto">
     <button type="submit" class="btn btn-outline-secondary">Search</button>
   </div>

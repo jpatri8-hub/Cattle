@@ -80,6 +80,10 @@
         <tr><th>Calving Ease</th><td>{{ calving_ease_label }}</td></tr>
         <tr><th>Weaned Date</th><td>{{ animal.calf_record.weaned_date or "Not weaned yet" }}</td></tr>
         <tr><th>Weaning Weight</th><td>{{ animal.calf_record.weaning_weight or "-" }}{% if animal.calf_record.weaning_weight %} lbs{% endif %}</td></tr>
+        {% if animal.sex == "male" %}
+        <tr><th>Scrotum Circumference</th><td>{{ animal.calf_record.scrotum_circumference or "-" }}{% if animal.calf_record.scrotum_circumference %} cm{% endif %}</td></tr>
+        {% endif %}
+        <tr><th>Hip Height</th><td>{{ animal.calf_record.hip_height or "-" }}{% if animal.calf_record.hip_height %} in{% endif %}</td></tr>
         <tr><th>Quality</th><td>{{ animal.calf_record.quality or "Not rated" }}</td></tr>
       </table>
       <form method="post" action="{{ url_for('animals.update_calf_quality', calf_record_id=animal.calf_record.id) }}" class="row g-2">
@@ -91,6 +95,16 @@
         <div class="col-auto">
           {{ quality_form.weaning_weight.label(class="form-label small") }}
           {{ quality_form.weaning_weight(class="form-control form-control-sm", value=animal.calf_record.weaning_weight or "") }}
+        </div>
+        {% if animal.sex == "male" %}
+        <div class="col-auto">
+          {{ quality_form.scrotum_circumference.label(class="form-label small") }}
+          {{ quality_form.scrotum_circumference(class="form-control form-control-sm", value=animal.calf_record.scrotum_circumference or "") }}
+        </div>
+        {% endif %}
+        <div class="col-auto">
+          {{ quality_form.hip_height.label(class="form-label small") }}
+          {{ quality_form.hip_height(class="form-control form-control-sm", value=animal.calf_record.hip_height or "") }}
         </div>
         <div class="col-auto">
           {{ quality_form.quality.label(class="form-label small") }}

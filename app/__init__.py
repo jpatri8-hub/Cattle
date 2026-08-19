@@ -31,6 +31,10 @@ def create_app(config_class=Config):
 
     from app.models import User
 
+    with app.app_context():
+        from app.db_sync import sync_schema
+        sync_schema(app, db)
+
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))

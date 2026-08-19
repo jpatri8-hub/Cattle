@@ -155,6 +155,8 @@ class CalfBirthForm(FlaskForm):
 class CalfQualityForm(FlaskForm):
     weaned_date = DateField("Weaned Date (date the calf stopped nursing)", validators=[Optional()])
     weaning_weight = DecimalField("Weaning Weight (lbs)", validators=[Optional()], places=2)
+    scrotum_circumference = DecimalField("Scrotum Circumference (cm)", validators=[Optional()], places=2)
+    hip_height = DecimalField("Hip Height (in)", validators=[Optional()], places=2)
     quality = SelectField(
         "Calf Quality", choices=[("", "-- Not rated --")] + [(q, q) for q in CALF_QUALITY_CHOICES],
         validators=[Optional()],

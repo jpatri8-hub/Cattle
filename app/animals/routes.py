@@ -68,6 +68,7 @@ def list_animals():
     has_calf = request.args.get("has_calf") == "1"
     flagged = request.args.get("flagged") == "1"
     sale_bulls = request.args.get("sale_bulls") == "1"
+    cripple = request.args.get("cripple") == "1"
     q = (request.args.get("q") or "").strip()
 
     query = Animal.query
@@ -81,6 +82,8 @@ def list_animals():
         query = query.filter_by(location_id=location_id)
     if sale_bulls:
         query = query.filter_by(is_sale_bull=True)
+    if cripple:
+        query = query.filter_by(is_cripple=True)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -107,7 +110,7 @@ def list_animals():
         "animals/list.html", animals=animals, grouped_animals=grouped_animals,
         types=types, locations=locations,
         type_id=type_id, location_id=location_id, current_only=current_only,
-        has_calf=has_calf, flagged=flagged, sale_bulls=sale_bulls, q=q,
+        has_calf=has_calf, flagged=flagged, sale_bulls=sale_bulls, cripple=cripple, q=q,
     )
 
 
@@ -609,6 +612,9 @@ def update_calf_quality(calf_record_id):
     if form.validate_on_submit():
         record.quality = form.quality.data or None
         record.weaning_weight = form.weaning_weight.data
+        record.hip_height = form.hip_height.data
+        if record.calf_sex == SEX_MALE:
+            record.scrotum_circumference = form.scrotum_circumference.data
         if form.weaned_date.data:
             record.weaned_date = form.weaned_date.data
             apply_weaning_transfer(record)
