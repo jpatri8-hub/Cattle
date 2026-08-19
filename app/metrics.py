@@ -44,18 +44,38 @@ def cost_for_animal(animal, start=None, end=None):
     calf's own cost starts accruing from the weaned date forward. This is a
     real (zero-sum) transfer: the same amount is subtracted from the dam for
     every calf of hers that's been weaned, so the combined dam+calf total is
-    unchanged - it only shifts which animal the cost is attributed to."""
+    unchanged - it only shifts which animal the cost is attributed to.
+
+    Animals from the initial herd load typically have no birth date and no
+    calf record on file, so falling back to created_at (when the row was
+    entered into the app) would badly undercount their real time on the
+    farm. For anything entered before INITIAL_LOAD_COST_CUTOVER with no
+    birth date - with or without a calf record - cost accrues starting on
+    the cutover date instead."""
     calf_record = animal.calf_record
     dam_credit = 0.0
     if calf_record:
-        if not calf_record.weaned_date:
-            is_initial_load = animal.birth_date and animal.birth_date < INITIAL_LOAD_COST_CUTOVER
-            if not is_initial_load:
-                return 0.0
-            start = start or INITIAL_LOAD_COST_CUTOVER
-        else:
+        if calf_record.weaned_date:
             start = start or calf_record.weaned_date
             dam_credit = _dam_weaning_transfer_amount(calf_record.dam)
+        elif animal.birth_date and animal.birth_date >= INITIAL_LOAD_COST_CUTOVER:
+            return 0.0  # a real, currently-nursing calf - dam covers cost until she's actually weaned
+        else:
+            # A calf record with no weaned_date and no birth date on/after the
+            # cutover is from the initial herd load, not an actual current
+            # nursing calf - accrue from the cutover instead of staying at $0.
+            start = start or INITIAL_LOAD_COST_CUTOVER
+
+    if start is None and not animal.birth_date:
+        # No calf record and no recorded birth date - most of the initial
+        # herd load. created_at only reflects when the record was entered
+        # into the app, not how long the animal's actually been on the farm,
+        # so for anything entered before the cutover, accrue from the
+        # cutover instead. Anything entered after the cutover is a normal
+        # new addition, so created_at (today, in practice) stays the fallback.
+        created_date = animal.created_at.date() if animal.created_at else None
+        if created_date and created_date < INITIAL_LOAD_COST_CUTOVER:
+            start = INITIAL_LOAD_COST_CUTOVER
 
     own_start = start or animal.birth_date or (animal.created_at.date() if animal.created_at else None)
     own_end = end or animal.departure_date or date.today()
