@@ -9,9 +9,9 @@ from app.decorators import owner_required
 from app.metrics import (
     animals_needing_attention, bull_lifetime_revenue, bulls_culled, calf_performance_by_parent,
     cost_for_animal, death_loss_rate, feedout_rollup_by_parent, feedout_rollup_by_type,
-    INITIAL_LOAD_COST_CUTOVER, net_margin_by_type, pregnancy_rate, weaning_rate,
+    INITIAL_LOAD_COST_CUTOVER, net_margin_by_animal, net_margin_by_type, pregnancy_rate, weaning_rate,
 )
-from app.models import Animal, CalfRecord, SEX_MALE
+from app.models import Animal, AnimalType, CalfRecord, SEX_MALE
 from app.reports.registration import (
     assign_brand_numbers, build_registration_workbook, default_season_end_year,
     eligible_calf_records,
@@ -57,6 +57,21 @@ def overview():
         bull_revenue=bull_revenue,
         show_departed=show_departed,
         initial_load_cutover=INITIAL_LOAD_COST_CUTOVER,
+    )
+
+
+@reports_bp.route("/type/<int:type_id>")
+def type_detail(type_id):
+    year = request.args.get("year", date.today().year, type=int)
+    animal_type = AnimalType.query.get_or_404(type_id)
+    rows = net_margin_by_animal(type_id, year)
+    totals = {
+        "cost": round(sum(r["cost"] for r in rows), 2),
+        "revenue": round(sum(r["revenue"] for r in rows), 2),
+        "net": round(sum(r["net"] for r in rows), 2),
+    }
+    return render_template(
+        "reports/type_detail.html", animal_type=animal_type, rows=rows, year=year, totals=totals,
     )
 
 

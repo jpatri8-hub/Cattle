@@ -52,7 +52,7 @@
     <tbody>
       {% for type_name, m in net_margin.items() %}
       <tr>
-        <td>{{ type_name }}</td>
+        <td><a href="{{ url_for('reports.type_detail', type_id=m.type_id, year=year) }}">{{ type_name }}</a></td>
         <td>{{ m.count }}</td>
         <td>${{ "%.2f"|format(m.cost) }}</td>
         <td>${{ "%.2f"|format(m.revenue) }}</td>
