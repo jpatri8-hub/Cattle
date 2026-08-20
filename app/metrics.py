@@ -120,12 +120,30 @@ def net_margin_by_type():
         cost = sum(cost_for_animal(a) for a in animals)
         revenue = sum(animal_revenue(a) for a in animals)
         results[t.name] = {
+            "type_id": t.id,
             "count": len(animals),
             "cost": round(cost, 2),
             "revenue": round(revenue, 2),
             "net": round(revenue - cost, 2),
         }
     return results
+
+
+def net_margin_by_animal(type_id, year=None):
+    """Per-animal cost/revenue/net for one animal type, restricted to
+    animals currently on the farm or that departed during the given
+    calendar year (defaults to the current year)."""
+    year = year or date.today().year
+    animals = Animal.query.filter_by(animal_type_id=type_id).order_by(Animal.tag_id).all()
+    rows = []
+    for a in animals:
+        if not (a.is_active or (a.departure_date and a.departure_date.year == year)):
+            continue
+        cost = round(cost_for_animal(a), 2)
+        revenue = round(animal_revenue(a), 2)
+        rows.append({"animal": a, "cost": cost, "revenue": revenue, "net": round(revenue - cost, 2)})
+    rows.sort(key=lambda r: -r["net"])
+    return rows
 
 
 def _year_bounds(year):

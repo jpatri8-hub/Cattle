@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ animal_type.name }} - Cost/Revenue/Net Margin - Cattle Manager{% endblock %}
+{% block content %}
+<h2 class="mb-1">{{ animal_type.name }}</h2>
+<p class="text-muted">Cost / Revenue / Net Margin by animal, {{ year }}. Only animals currently on the farm or that left the farm during {{ year }} are shown.</p>
+
+<div class="table-responsive">
+<table class="table table-sm bg-white align-middle">
+  <thead><tr><th>ID</th><th>Status</th><th>Cost</th><th>Revenue</th><th>Net</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="{{ url_for('animals.view_animal', animal_id=r.animal.id, back=request.full_path) }}">{{ r.animal.display_id }}</a></td>
+      <td>{% if r.animal.is_active %}On Farm{% else %}Left {{ r.animal.departure_date }}{% endif %}</td>
+      <td>${{ "%.2f"|format(r.cost) }}</td>
+      <td>${{ "%.2f"|format(r.revenue) }}</td>
+      <td class="{{ 'text-success' if r.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(r.net) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="text-muted">No animals of this type currently on the farm or that left during {{ year }}.</td></tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr class="fw-bold border-top">
+      <td colspan="2">Total</td>
+      <td>${{ "%.2f"|format(totals.cost) }}</td>
+      <td>${{ "%.2f"|format(totals.revenue) }}</td>
+      <td class="{{ 'text-success' if totals.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(totals.net) }}</td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% endblock %}
