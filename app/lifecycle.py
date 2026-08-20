@@ -156,14 +156,26 @@ def apply_weaning_transfer(calf_record):
     return True
 
 
+EXCLUDED_BREEDING_LOCATION_NAME = "tbd"  # a placeholder location for animals of unknown whereabouts - never auto-detected as a breeding pairing
+
+
 def auto_sync_breeding_exposure(commit=True):
     """Automatically maintains one open BreedingGroup per location whenever an
     active bull and an active cow/heifer currently share that location, and
     creates ExposureRecords for the females present there. Closes the
     auto-tracked group once no bull is left paired with a female. Manually
-    created (non-auto) groups are never touched by this."""
+    created (non-auto) groups are never touched by this. The TBD placeholder
+    location is skipped entirely, since animals parked there don't have a
+    confirmed real-world location and shouldn't be flagged as exposed."""
     changes = []
     for loc in Location.query.filter_by(is_active=True).all():
+        if loc.name.strip().lower() == EXCLUDED_BREEDING_LOCATION_NAME:
+            group = BreedingGroup.query.filter_by(location_id=loc.id, end_date=None, is_auto=True).first()
+            if group:
+                group.end_date = date.today()
+                changes.append(f"Closed auto-tracked breeding group at {loc.name} (excluded from auto breeding detection)")
+            continue
+
         animals_here = Animal.query.filter_by(location_id=loc.id, is_active=True).all()
         bulls_here = [a for a in animals_here if a.is_bull]
         females_here = [
