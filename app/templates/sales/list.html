@@ -5,6 +5,21 @@
   <h2>Sales</h2>
   <a href="{{ url_for('sales.new_sale') }}" class="btn btn-success">+ Record Sale</a>
 </div>
+
+<form class="row g-2 align-items-end mb-3" method="get" action="{{ url_for('sales.export_sales') }}">
+  <div class="col-auto">
+    <label class="form-label small mb-0">From</label>
+    <input type="date" name="start_date" class="form-control form-control-sm" value="{{ export_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0">To</label>
+    <input type="date" name="end_date" class="form-control form-control-sm" value="{{ export_end }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Export to Excel</button>
+  </div>
+</form>
+
 <div class="table-responsive">
 <table class="table table-striped bg-white">
   <thead><tr><th>Invoice</th><th>Category</th><th>Buyer</th><th>Date</th><th># Animals</th><th>Total</th><th>Avg Price</th><th>Avg Weight</th></tr></thead>

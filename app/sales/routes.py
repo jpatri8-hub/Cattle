@@ -1,6 +1,7 @@
+import io
 from datetime import date
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -9,6 +10,7 @@ from app.forms import BuyerForm, SaleForm
 from app.models import (
     Animal, Buyer, DEPARTURE_SOLD, Sale, SaleCategory, SaleLine,
 )
+from app.sales.export import build_sales_workbook
 
 sales_bp = Blueprint("sales", __name__, url_prefix="/sales")
 
@@ -20,7 +22,38 @@ TRUCKLOAD_CATEGORY_NAME = "truckload calf sale"
 @owner_required
 def list_sales():
     sales = Sale.query.order_by(Sale.sale_date.desc()).all()
-    return render_template("sales/list.html", sales=sales)
+    today = date.today()
+    return render_template(
+        "sales/list.html", sales=sales,
+        export_start=date(today.year, 1, 1).isoformat(), export_end=today.isoformat(),
+    )
+
+
+@sales_bp.route("/export")
+@login_required
+@owner_required
+def export_sales():
+    start_raw = request.args.get("start_date")
+    end_raw = request.args.get("end_date")
+    try:
+        start = date.fromisoformat(start_raw)
+        end = date.fromisoformat(end_raw)
+    except (TypeError, ValueError):
+        flash("Pick a valid start and end date to export.", "warning")
+        return redirect(url_for("sales.list_sales"))
+    if end < start:
+        flash("End date must be on or after the start date.", "warning")
+        return redirect(url_for("sales.list_sales"))
+
+    wb = build_sales_workbook(start, end)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    filename = f"sales_{start.isoformat()}_to_{end.isoformat()}.xlsx"
+    return send_file(
+        buffer, as_attachment=True, download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 def _parse_sale_lines(animals, is_truckload):

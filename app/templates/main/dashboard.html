@@ -62,7 +62,7 @@
       <h6>Overdue Rentals ({{ alerts.rentals_overdue|length }})</h6>
       <ul class="list-group list-group-flush">
         {% for r in alerts.rentals_overdue %}
-        <li class="list-group-item"><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }} - {{ r.customer.name }}</a> <small class="text-muted">due {{ r.end_date }}</small></li>
+        <li class="list-group-item"><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.display_bull }} - {{ r.customer.name }}</a> <small class="text-muted">due {{ r.end_date }}</small></li>
         {% endfor %}
       </ul>
     </div>
@@ -79,7 +79,7 @@
       <ul class="list-group list-group-flush">
         {% for r in upcoming_returns %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }} - {{ r.customer.name }}</a>
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.display_bull }} - {{ r.customer.name }}</a>
           <span class="{{ 'text-danger fw-bold' if r.is_overdue else '' }}">{{ r.end_date }}</span>
         </li>
         {% endfor %}
@@ -95,7 +95,7 @@
       <ul class="list-group list-group-flush">
         {% for r in upcoming_bookings %}
         <li class="list-group-item d-flex justify-content-between">
-          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.bull.display_id }} - {{ r.customer.name }}</a>
+          <a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.display_bull }} - {{ r.customer.name }}</a>
           <span>{{ r.start_date }}</span>
         </li>
         {% endfor %}

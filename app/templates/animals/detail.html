@@ -117,7 +117,8 @@
 
     {% if animal.is_bull %}
     <div class="card card-dashboard p-3 mt-3">
-      <h5>EPDs</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#epdBox">EPDs <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="epdBox">
       <form method="post" action="{{ url_for('animals.edit_epd', animal_id=animal.id) }}" class="row g-2">
         {{ epd_form.hidden_tag() }}
         <div class="col-6">{{ epd_form.ced.label(class="form-label small") }} {{ epd_form.ced(class="form-control form-control-sm") }}</div>
@@ -129,10 +130,12 @@
         <div class="col-6">{{ epd_form.ribeye_area_epd.label(class="form-label small") }} {{ epd_form.ribeye_area_epd(class="form-control form-control-sm") }}</div>
         <div class="col-12 mt-2">{{ epd_form.submit(class="btn btn-sm btn-outline-success") }}</div>
       </form>
+      </div>
     </div>
 
     <div class="card card-dashboard p-3 mt-3">
-      <h5>Semen Tests</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#semenBox">Semen Tests <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="semenBox">
       <table class="table table-sm mb-2">
         <thead><tr><th>Date</th><th>Result</th><th>Notes</th></tr></thead>
         <tbody>
@@ -148,10 +151,12 @@
         <div class="col-auto">{{ semen_form.notes(class="form-control form-control-sm", placeholder="Notes") }}</div>
         <div class="col-auto">{{ semen_form.submit(class="btn btn-sm btn-outline-success") }}</div>
       </form>
+      </div>
     </div>
 
     <div class="card card-dashboard p-3 mt-3">
-      <h5>Rental History</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#rentalHistoryBox">Rental History <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="rentalHistoryBox">
       {% if animal.rentals %}
       <ul class="list-group list-group-flush">
         {% for r in animal.rentals %}
@@ -165,6 +170,7 @@
       </ul>
       {% else %}<p class="text-muted mb-0">No rental history.</p>{% endif %}
       <a href="{{ url_for('rentals.new_rental', bull_id=animal.id) }}" class="btn btn-sm btn-success mt-2">Book Rental</a>
+      </div>
     </div>
     {% endif %}
   </div>
