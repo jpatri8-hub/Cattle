@@ -13,6 +13,10 @@
     <div class="col-md-6 mb-3">{{ form.bull_id.label(class="form-label") }} {{ form.bull_id(class="form-select") }}</div>
     <div class="col-md-3 mb-3">{{ form.start_date.label(class="form-label") }} {{ form.start_date(class="form-control") }}</div>
     <div class="col-md-3 mb-3">{{ form.end_date.label(class="form-label") }} {{ form.end_date(class="form-control") }}</div>
+    <div class="col-md-6 mb-3">
+      {{ form.bull_count.label(class="form-label") }} {{ form.bull_count(class="form-control") }}
+      <small class="text-muted">Leave Bull set to "Not yet decided" and fill this in as a reminder - e.g. a deposit's been paid but it's too early to pick which bull(s). Assign a specific bull later by editing this rental.</small>
+    </div>
 
     <div class="col-md-4 mb-3">{{ form.rate_type.label(class="form-label") }} {{ form.rate_type(class="form-select") }}</div>
     <div class="col-md-4 mb-3">{{ form.rate.label(class="form-label") }} {{ form.rate(class="form-control") }}</div>
@@ -21,6 +25,6 @@
     <div class="col-12 mb-3">{{ form.contract_notes.label(class="form-label") }} {{ form.contract_notes(class="form-control", rows=4) }}</div>
   </div>
   {{ form.submit(class="btn btn-success") }}
-  <a href="{{ url_for('rentals.list_rentals') }}" class="btn btn-link">Cancel</a>
+  <a href="{{ url_for('rentals.view_rental', rental_id=rental.id) if rental else url_for('rentals.list_rentals') }}" class="btn btn-link">Cancel</a>
 </form>
 {% endblock %}

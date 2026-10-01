@@ -213,7 +213,10 @@ class SemenTestForm(FlaskForm):
 # ---- Rentals --------------------------------------------------------------------
 
 class RentalForm(FlaskForm):
-    bull_id = SelectField("Bull", coerce=int, validators=[DataRequired()])
+    bull_id = SelectField("Bull", coerce=int, validators=[Optional()])
+    bull_count = IntegerField(
+        "Number of Bulls (if the bull hasn't been decided yet)", validators=[Optional()]
+    )
     customer_id = SelectField("Buyer / Customer", coerce=int, validators=[DataRequired()])
     start_date = DateField("Start Date", validators=[DataRequired()])
     end_date = DateField("End Date", validators=[DataRequired()])

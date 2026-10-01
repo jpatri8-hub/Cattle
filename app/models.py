@@ -483,7 +483,8 @@ class CalfRecord(db.Model):
 
 class Rental(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    bull_id = db.Column(db.Integer, db.ForeignKey("animal.id"), nullable=False)
+    bull_id = db.Column(db.Integer, db.ForeignKey("animal.id"))  # null = bull not yet decided, see bull_count
+    bull_count = db.Column(db.Integer)  # number of bulls reserved when bull_id is still undecided
     customer_id = db.Column(db.Integer, db.ForeignKey("buyer.id"), nullable=False)
 
     start_date = db.Column(db.Date, nullable=False)
@@ -512,6 +513,13 @@ class Rental(db.Model):
     @property
     def is_overdue(self):
         return self.status == RENTAL_ACTIVE and self.end_date < date.today()
+
+    @property
+    def display_bull(self):
+        if self.bull:
+            return self.bull.display_id
+        count = self.bull_count or 1
+        return f"TBD ({count} bull{'s' if count != 1 else ''})"
 
     @property
     def revenue(self):

@@ -41,7 +41,9 @@ def list_rentals():
 def new_rental():
     form = RentalForm()
     bulls = [a for a in Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all() if a.is_bull]
-    form.bull_id.choices = [(a.id, f"{a.display_id}{'' if a.is_rentable_available else ' (unavailable)'}") for a in bulls]
+    form.bull_id.choices = [(0, "-- Not yet decided --")] + [
+        (a.id, f"{a.display_id}{'' if a.is_rentable_available else ' (unavailable)'}") for a in bulls
+    ]
     form.customer_id.choices = [(c.id, c.name) for c in Buyer.query.order_by(Buyer.name).all()]
 
     if not form.customer_id.choices:
@@ -49,17 +51,21 @@ def new_rental():
 
     if request.method == "GET":
         preselect = request.args.get("bull_id", type=int)
-        if preselect:
-            form.bull_id.data = preselect
+        form.bull_id.data = preselect or 0
 
     if form.validate_on_submit():
+        bull_id = form.bull_id.data or None
+        bull_count = form.bull_count.data
         if form.end_date.data < form.start_date.data:
             flash("End date must be on or after the start date.", "danger")
-        elif _has_conflict(form.bull_id.data, form.start_date.data, form.end_date.data):
+        elif not bull_id and not bull_count:
+            flash("Pick a bull, or enter a number of bulls if it's too early to decide which one(s).", "danger")
+        elif bull_id and _has_conflict(bull_id, form.start_date.data, form.end_date.data):
             flash("That bull is already booked during part of this date range.", "danger")
         else:
             rental = Rental(
-                bull_id=form.bull_id.data,
+                bull_id=bull_id,
+                bull_count=None if bull_id else bull_count,
                 customer_id=form.customer_id.data,
                 start_date=form.start_date.data,
                 end_date=form.end_date.data,
@@ -77,6 +83,47 @@ def new_rental():
     return render_template("rentals/form.html", form=form, title="Book a Rental")
 
 
+@rentals_bp.route("/<int:rental_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_rental(rental_id):
+    rental = Rental.query.get_or_404(rental_id)
+    form = RentalForm(obj=rental)
+    bulls = [a for a in Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all() if a.is_bull]
+    form.bull_id.choices = [(0, "-- Not yet decided --")] + [
+        (a.id, f"{a.display_id}{'' if a.is_rentable_available else ' (unavailable)'}") for a in bulls
+    ]
+    form.customer_id.choices = [(c.id, c.name) for c in Buyer.query.order_by(Buyer.name).all()]
+
+    if request.method == "GET":
+        form.bull_id.data = rental.bull_id or 0
+        form.customer_id.data = rental.customer_id
+
+    if form.validate_on_submit():
+        bull_id = form.bull_id.data or None
+        bull_count = form.bull_count.data
+        if form.end_date.data < form.start_date.data:
+            flash("End date must be on or after the start date.", "danger")
+        elif not bull_id and not bull_count:
+            flash("Pick a bull, or enter a number of bulls if it's too early to decide which one(s).", "danger")
+        elif bull_id and _has_conflict(bull_id, form.start_date.data, form.end_date.data, exclude_rental_id=rental.id):
+            flash("That bull is already booked during part of this date range.", "danger")
+        else:
+            rental.bull_id = bull_id
+            rental.bull_count = None if bull_id else bull_count
+            rental.customer_id = form.customer_id.data
+            rental.start_date = form.start_date.data
+            rental.end_date = form.end_date.data
+            rental.rate = form.rate.data
+            rental.rate_type = form.rate_type.data
+            rental.deposit_amount = form.deposit_amount.data
+            rental.contract_notes = form.contract_notes.data
+            db.session.commit()
+            flash("Rental updated.", "success")
+            return redirect(url_for("rentals.view_rental", rental_id=rental.id))
+
+    return render_template("rentals/form.html", form=form, title=f"Edit Rental #{rental.id}", rental=rental)
+
+
 @rentals_bp.route("/<int:rental_id>")
 @login_required
 def view_rental(rental_id):
@@ -92,6 +139,9 @@ def view_rental(rental_id):
 @login_required
 def add_check(rental_id):
     rental = Rental.query.get_or_404(rental_id)
+    if not rental.bull_id:
+        flash("Assign a specific bull to this rental before logging a pickup/return check.", "warning")
+        return redirect(url_for("rentals.view_rental", rental_id=rental.id))
     form = RentalCheckForm()
     form.location_id.choices = [(0, "-- Keep current location --")] + [
         (l.id, l.display_name) for l in Location.query.filter_by(is_active=True).order_by(Location.name).all()

@@ -28,7 +28,7 @@
   <tbody>
     {% for r in rentals %}
     <tr>
-      <td><a href="{{ url_for('animals.view_animal', animal_id=r.bull_id) }}">{{ r.bull.display_id }}</a></td>
+      <td>{% if r.bull %}<a href="{{ url_for('animals.view_animal', animal_id=r.bull_id) }}">{{ r.display_bull }}</a>{% else %}{{ r.display_bull }}{% endif %}</td>
       <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.customer.name }}</a></td>
       <td>{{ r.start_date }}</td>
       <td>{{ r.end_date }}</td>

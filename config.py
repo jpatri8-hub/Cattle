@@ -9,7 +9,13 @@ load_dotenv(os.path.join(basedir, ".env"))
 def _normalize_db_url(url):
     # Render (like Heroku) hands out "postgres://" but SQLAlchemy 2.x requires "postgresql://"
     if url.startswith("postgres://"):
-        return "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://"):]
+    # Force the psycopg2 driver explicitly (that's what's in requirements.txt) -
+    # newer SQLAlchemy releases can default a bare "postgresql://" URL to the
+    # psycopg (v3) driver instead, which isn't installed and would make the
+    # app fail to start.
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg2://" + url[len("postgresql://"):]
     return url
 
 
