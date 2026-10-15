@@ -11,7 +11,7 @@ from app.metrics import (
     cost_for_animal, death_loss_rate, feedout_rollup_by_parent, feedout_rollup_by_type,
     INITIAL_LOAD_COST_CUTOVER, net_margin_by_animal, net_margin_by_type, pregnancy_rate, weaning_rate,
 )
-from app.models import Animal, AnimalType, CalfRecord, SEX_MALE
+from app.models import Animal, animal_sort_key, AnimalType, CalfRecord, SEX_MALE
 from app.reports.registration import (
     assign_brand_numbers, build_registration_workbook, default_season_end_year,
     eligible_calf_records,
@@ -34,7 +34,7 @@ def overview():
     bull_query = Animal.query.filter_by(sex=SEX_MALE)
     if not show_departed:
         bull_query = bull_query.filter_by(is_active=True)
-    bulls = [a for a in bull_query.order_by(Animal.tag_id).all() if a.is_bull]
+    bulls = [a for a in sorted(bull_query.all(), key=animal_sort_key) if a.is_bull]
     bull_revenue = sorted(
         ((b, bull_lifetime_revenue(b), cost_for_animal(b)) for b in bulls), key=lambda x: -x[1]
     )

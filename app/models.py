@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+import re
 
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -12,6 +13,28 @@ ROLES = [ROLE_OWNER, ROLE_HAND]
 SEX_MALE = "male"
 SEX_FEMALE = "female"
 SEX_CHOICES = [SEX_MALE, SEX_FEMALE]
+
+_LEADING_DIGITS = re.compile(r"^(\d+)(.*)$")
+
+
+def tag_sort_key(tag):
+    """Sort key for an animal ID string in true numerical order (1, 2, 3, 9,
+    100, 101, 405, 600) instead of plain string order. Most tags are purely
+    numeric (up to ~3 digits) and sort correctly this way; purchased animals
+    that keep a prior owner's ID can include letters, which sort after all
+    numeric IDs - acceptable since those are rare and not expected to
+    interleave numerically with the rest of the herd."""
+    if not tag:
+        return (2, 0, "")
+    match = _LEADING_DIGITS.match(tag.strip())
+    if match:
+        return (0, int(match.group(1)), match.group(2))
+    return (1, 0, tag)
+
+
+def animal_sort_key(animal):
+    return tag_sort_key(animal.tag_id or animal.temp_id or "")
+
 
 TRANSFER_TRIGGER_AGE = "age_months"
 TRANSFER_TRIGGER_WEANED = "first_calf_weaned"

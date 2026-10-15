@@ -8,7 +8,7 @@ from app import db
 from app.decorators import owner_required
 from app.forms import BuyerForm, SaleForm
 from app.models import (
-    Animal, Buyer, DEPARTURE_SOLD, Sale, SaleCategory, SaleLine,
+    Animal, animal_sort_key, Buyer, DEPARTURE_SOLD, Sale, SaleCategory, SaleLine,
 )
 from app.sales.export import build_sales_workbook
 
@@ -116,7 +116,7 @@ def new_sale():
     if not form.sale_category_id.choices:
         flash("Add a sale category before recording a sale.", "warning")
 
-    sellable = Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all()
+    sellable = sorted(Animal.query.filter_by(is_active=True).all(), key=animal_sort_key)
     animals_data = [
         {
             "id": a.id,

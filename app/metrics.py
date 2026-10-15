@@ -2,7 +2,7 @@
 from datetime import date, timedelta
 
 from app.models import (
-    Animal, AnimalType, AnimalTypeCostRate, BreedingGroup, CALF_QUALITY_SCALE,
+    Animal, animal_sort_key, AnimalType, AnimalTypeCostRate, BreedingGroup, CALF_QUALITY_SCALE,
     CalfRecord, ExposureRecord, FeedoutRecord, GRADE_SCALE, Sale, SaleCategory,
 )
 
@@ -134,7 +134,7 @@ def net_margin_by_animal(type_id, year=None):
     animals currently on the farm or that departed during the given
     calendar year (defaults to the current year)."""
     year = year or date.today().year
-    animals = Animal.query.filter_by(animal_type_id=type_id).order_by(Animal.tag_id).all()
+    animals = sorted(Animal.query.filter_by(animal_type_id=type_id).all(), key=animal_sort_key)
     rows = []
     for a in animals:
         if not (a.is_active or (a.departure_date and a.departure_date.year == year)):
@@ -286,7 +286,7 @@ def animals_needing_attention():
     """Active animals whose most recent last-seen check flagged them Sick,
     Injured, or Other, grouped by location. An animal with no checks at all,
     or whose latest check was Healthy, is left off the list."""
-    animals = Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all()
+    animals = sorted(Animal.query.filter_by(is_active=True).all(), key=animal_sort_key)
     groups = {}
     for a in animals:
         latest_check = a.last_seen_checks[0] if a.last_seen_checks else None
