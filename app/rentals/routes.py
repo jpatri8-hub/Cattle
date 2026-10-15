@@ -6,7 +6,7 @@ from flask_login import current_user, login_required
 from app import db
 from app.forms import RentalCheckForm, RentalForm
 from app.models import (
-    Animal, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_RETURNED,
+    Animal, animal_sort_key, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_RETURNED,
     Rental, RentalCheck,
 )
 
@@ -32,7 +32,7 @@ def list_rentals():
     query = Rental.query
     if status_filter:
         query = query.filter_by(status=status_filter)
-    rentals = query.order_by(Rental.start_date.desc()).all()
+    rentals = query.order_by(Rental.start_date.asc()).all()
     return render_template("rentals/list.html", rentals=rentals, status_filter=status_filter)
 
 
@@ -40,7 +40,7 @@ def list_rentals():
 @login_required
 def new_rental():
     form = RentalForm()
-    bulls = [a for a in Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all() if a.is_bull]
+    bulls = [a for a in sorted(Animal.query.filter_by(is_active=True).all(), key=animal_sort_key) if a.is_bull]
     form.bull_id.choices = [(0, "-- Not yet decided --")] + [
         (a.id, f"{a.display_id}{'' if a.is_rentable_available else ' (unavailable)'}") for a in bulls
     ]
@@ -88,7 +88,7 @@ def new_rental():
 def edit_rental(rental_id):
     rental = Rental.query.get_or_404(rental_id)
     form = RentalForm(obj=rental)
-    bulls = [a for a in Animal.query.filter_by(is_active=True).order_by(Animal.tag_id).all() if a.is_bull]
+    bulls = [a for a in sorted(Animal.query.filter_by(is_active=True).all(), key=animal_sort_key) if a.is_bull]
     form.bull_id.choices = [(0, "-- Not yet decided --")] + [
         (a.id, f"{a.display_id}{'' if a.is_rentable_available else ' (unavailable)'}") for a in bulls
     ]

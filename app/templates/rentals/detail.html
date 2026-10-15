@@ -20,9 +20,9 @@
         <tr><th>Customer</th><td>{% if current_user.is_owner %}<a href="{{ url_for('sales.view_buyer', buyer_id=rental.customer_id) }}">{{ rental.customer.name }}</a>{% else %}{{ rental.customer.name }}{% endif %}</td></tr>
         <tr><th>Phone</th><td>{{ rental.customer.phone or "-" }}</td></tr>
         <tr><th>Email</th><td>{{ rental.customer.email or "-" }}</td></tr>
-        <tr><th>Start</th><td>{{ rental.start_date }}</td></tr>
-        <tr><th>End (planned)</th><td>{{ rental.end_date }}</td></tr>
-        <tr><th>Actual Return</th><td>{{ rental.actual_return_date or "-" }}</td></tr>
+        <tr><th>Start</th><td>{{ rental.start_date.strftime('%m-%d-%Y') }}</td></tr>
+        <tr><th>End (planned)</th><td>{{ rental.end_date.strftime('%m-%d-%Y') }}</td></tr>
+        <tr><th>Actual Return</th><td>{{ rental.actual_return_date.strftime('%m-%d-%Y') if rental.actual_return_date else "-" }}</td></tr>
         {% if current_user.is_owner %}
         <tr><th>Rate</th><td>{{ "$%.2f"|format(rental.rate) if rental.rate else "-" }} ({{ rental.rate_type }})</td></tr>
         <tr><th>Deposit</th><td>{{ "$%.2f"|format(rental.deposit_amount) if rental.deposit_amount else "-" }} {% if rental.deposit_returned %}(returned){% endif %}</td></tr>
@@ -41,7 +41,7 @@
         <tbody>
           {% for c in rental.checks %}
           <tr>
-            <td>{{ c.date_recorded }}</td>
+            <td>{{ c.date_recorded.strftime('%m-%d-%Y') }}</td>
             <td><span class="badge bg-info text-dark">{{ c.check_type }}</span></td>
             <td>{{ c.condition_score or "-" }}</td>
             <td>{{ c.condition_notes or "-" }}</td>

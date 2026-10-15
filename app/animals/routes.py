@@ -17,7 +17,7 @@ from app.lifecycle import (
     generate_temp_id,
 )
 from app.models import (
-    Animal, AnimalType, BreedingGroup, BullEPD, CALVING_EASE_CHOICES, CalfRecord,
+    Animal, animal_sort_key, AnimalType, BreedingGroup, BullEPD, CALVING_EASE_CHOICES, CalfRecord,
     ExposureRecord, FeedoutRecord, HealthRecord, LastSeenCheck,
     Location, RENTAL_ACTIVE, RENTAL_BOOKED, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
 )
@@ -48,12 +48,12 @@ def _animal_label(a):
 
 
 def _bull_choices():
-    return [(a.id, _animal_label(a)) for a in Animal.query.filter_by(is_active=True, sex=SEX_MALE).order_by(Animal.tag_id).all() if a.is_bull]
+    return [(a.id, _animal_label(a)) for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_MALE).all(), key=animal_sort_key) if a.is_bull]
 
 
 def _cow_choices():
     return [
-        (a.id, _animal_label(a)) for a in Animal.query.filter_by(is_active=True, sex=SEX_FEMALE).order_by(Animal.tag_id).all()
+        (a.id, _animal_label(a)) for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_FEMALE).all(), key=animal_sort_key)
     ]
 
 
@@ -90,7 +90,7 @@ def list_animals():
             db.or_(Animal.tag_id.ilike(like), Animal.temp_id.ilike(like), Animal.name.ilike(like))
         )
 
-    animals = query.order_by(Animal.tag_id).all()
+    animals = sorted(query.all(), key=animal_sort_key)
 
     if has_calf:
         animals = [a for a in animals if a.has_calf_at_side]
@@ -528,7 +528,7 @@ def import_csv():
 @login_required
 def list_cows():
     cows = [
-        a for a in Animal.query.filter_by(is_active=True, sex=SEX_FEMALE).order_by(Animal.tag_id).all()
+        a for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_FEMALE).all(), key=animal_sort_key)
         if a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
     ]
     return render_template("animals/cows_list.html", cows=cows)
@@ -587,6 +587,22 @@ def record_calf(cow_id):
             created_by_id=current_user.id,
         )
         db.session.add(record)
+
+        # A calf born via this form was, by definition, seen at birth - and so
+        # was her dam. Logging that here means a brand-new calf doesn't get
+        # immediately flagged as "not seen in 4+ months" (the not_seen_flagged
+        # check runs off last_seen_date, which would otherwise be blank), and
+        # it resets the dam's own not-seen clock too.
+        db.session.add(LastSeenCheck(
+            animal_id=calf.id, date_recorded=form.calving_date.data,
+            location_id=birth_location_id, health_status="Healthy",
+            notes="Recorded at birth.", seen_by_id=current_user.id,
+        ))
+        db.session.add(LastSeenCheck(
+            animal_id=dam.id, date_recorded=form.calving_date.data,
+            location_id=dam.location_id, health_status="Healthy",
+            notes="Seen at calving.", seen_by_id=current_user.id,
+        ))
         db.session.commit()
 
         msg = f"Calf recorded for {dam.display_id} ({calf_type.name}, temp ID {calf.temp_id})."
@@ -753,7 +769,7 @@ def confirm_bred(exposure_id):
 def list_bulls():
     low_bw = request.args.get("low_bw") == "1"
     cripple = request.args.get("cripple") == "1"
-    bulls = [a for a in Animal.query.filter_by(is_active=True, sex=SEX_MALE).order_by(Animal.tag_id).all() if a.is_bull]
+    bulls = [a for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_MALE).all(), key=animal_sort_key) if a.is_bull]
     if low_bw:
         bulls = [b for b in bulls if b.is_low_birth_weight_candidate]
     if cripple:
@@ -809,7 +825,7 @@ def export_bulls():
         query = query.filter(
             db.or_(Animal.tag_id.ilike(like), Animal.temp_id.ilike(like), Animal.name.ilike(like))
         )
-    bulls = [a for a in query.order_by(Animal.tag_id).all() if a.is_bull]
+    bulls = [a for a in sorted(query.all(), key=animal_sort_key) if a.is_bull]
 
     output = io.StringIO()
     writer = csv.writer(output)

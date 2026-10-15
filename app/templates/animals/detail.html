@@ -177,7 +177,8 @@
 
   <div class="col-md-8">
     <div class="card card-dashboard p-3 mb-4">
-      <h5>Last Seen / Inventory Checks</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#lastSeenBox">Last Seen / Inventory Checks <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="lastSeenBox">
       <p class="text-muted small mb-2">Last seen: {{ animal.last_seen_date or "Never recorded" }}{% if animal.not_seen_flagged %} &mdash; <span class="text-danger fw-bold">flagged, not seen in 4+ months</span>{% endif %}. Vaccination records also count as being seen.</p>
       <table class="table table-sm">
         <thead><tr><th>Date</th><th>Seen By</th><th>Location</th><th>Health</th><th>Notes</th></tr></thead>
@@ -195,6 +196,7 @@
         <div class="col-auto">{{ last_seen_form.notes(class="form-control", placeholder="Notes") }}</div>
         <div class="col-auto">{{ last_seen_form.submit(class="btn btn-outline-success") }}</div>
       </form>
+      </div>
     </div>
 
     {% if animal.sex == 'female' %}
@@ -252,7 +254,8 @@
 
     {% if current_user.is_owner %}
     <div class="card card-dashboard p-3 mb-4">
-      <h5>Weight History</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#weightHistoryBox">Weight History <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="weightHistoryBox">
       <table class="table table-sm">
         <thead><tr><th>Date</th><th>Weight (lbs)</th><th>Notes</th></tr></thead>
         <tbody>
@@ -270,10 +273,12 @@
         <div class="col-auto">{{ weight_form.notes(class="form-control", placeholder="Notes") }}</div>
         <div class="col-auto">{{ weight_form.submit(class="btn btn-outline-success") }}</div>
       </form>
+      </div>
     </div>
 
     <div class="card card-dashboard p-3 mb-4">
-      <h5>Health Records</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#healthRecordsBox">Health Records <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="healthRecordsBox">
       <table class="table table-sm">
         <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Next Due</th></tr></thead>
         <tbody>
@@ -297,10 +302,12 @@
         <div class="col-auto">{{ health_form.next_due_date.label(class="form-label small") }} {{ health_form.next_due_date(class="form-control") }}</div>
         <div class="col-auto">{{ health_form.submit(class="btn btn-outline-success") }}</div>
       </form>
+      </div>
     </div>
 
     <div class="card card-dashboard p-3">
-      <h5>Feedlot / Butcher</h5>
+      <h5 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#feedlotBox">Feedlot / Butcher <span class="text-muted small">&#9660;</span></h5>
+      <div class="collapse mt-2" id="feedlotBox">
       <table class="table table-sm">
         <thead><tr><th>Start</th><th>Start Wt</th><th>Days on Feed</th><th>Live Wt</th><th>Yield</th><th>Yield %</th><th>Grade</th><th>ADG</th></tr></thead>
         <tbody>
@@ -331,6 +338,7 @@
           <div class="col-auto">{{ feedout_form.submit(class="btn btn-sm btn-outline-success") }}</div>
           <div class="col-12"><small class="text-muted">Days on feed and yield % are computed automatically.</small></div>
         </form>
+      </div>
       </div>
     </div>
     {% endif %}

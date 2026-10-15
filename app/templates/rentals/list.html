@@ -30,8 +30,8 @@
     <tr>
       <td>{% if r.bull %}<a href="{{ url_for('animals.view_animal', animal_id=r.bull_id) }}">{{ r.display_bull }}</a>{% else %}{{ r.display_bull }}{% endif %}</td>
       <td><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.customer.name }}</a></td>
-      <td>{{ r.start_date }}</td>
-      <td>{{ r.end_date }}</td>
+      <td>{{ r.start_date.strftime('%m-%d-%Y') }}</td>
+      <td>{{ r.end_date.strftime('%m-%d-%Y') }}</td>
       <td>
         <span class="badge {{ 'bg-warning text-dark' if r.status=='active' else 'bg-secondary' }}">{{ r.status }}</span>
         {% if r.is_overdue %}<span class="badge bg-danger">Overdue</span>{% endif %}
