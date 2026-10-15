@@ -5,6 +5,9 @@ inventory tracking, bull rentals, sales, breeding/inbreeding awareness, feedlot
 grading, and cost/revenue reporting. Built to run comfortably on an iPhone
 browser as well as a desktop.
 
+> **Also in this repo:** [`ranch-tasks/`](ranch-tasks/README.md) is a separate task list, how-to guide library,
+> time clock and payroll export for ranch hands. It runs free on Cloudflare Workers + D1.
+
 ## Feature summary
 
 - **Herd inventory** — every animal has an editable **type** (e.g. "Registered

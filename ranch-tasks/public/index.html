@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f5d34">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ranch Tasks">
+  <title>Ranch Tasks</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header id="topbar" hidden>
+    <a href="#/" class="brand" id="brand">Ranch Tasks</a>
+    <a href="#/time" class="clock-pill" id="clockPill" hidden></a>
+  </header>
+  <main id="main"><div class="loading">Loading…</div></main>
+  <nav id="tabs" hidden>
+    <a href="#/" data-tab="today"><span class="ico" aria-hidden="true">✓</span>Tasks</a>
+    <a href="#/map" data-tab="map"><span class="ico" aria-hidden="true">⌖</span>Map</a>
+    <a href="#/guides" data-tab="guides"><span class="ico" aria-hidden="true">☰</span>Guides</a>
+    <a href="#/time" data-tab="time"><span class="ico" aria-hidden="true">◷</span>Time</a>
+    <a href="#/more" data-tab="more"><span class="ico" aria-hidden="true">⋯</span>More<b class="badge" id="reviewBadge" hidden></b></a>
+  </nav>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal"><div id="modalBody"></div></dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
