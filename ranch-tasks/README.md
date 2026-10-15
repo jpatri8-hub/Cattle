@@ -28,7 +28,7 @@ Yes. Everything here fits in the Workers **Free** plan:
 - Workers: 100,000 requests/day (a busy ranch day is a few hundred)
 - D1 database: 5 GB storage, 5 million row reads/day
 - Cron trigger for the weekly payroll email: included
-- Your site address will be `https://ranch-tasks.<your-name>.workers.dev`
+- Your site address will be `https://ranch-task.<your-name>.workers.dev`
 
 The only optional cost is a domain name (~$10/yr), and you need one **only** if
 you want the app to send the payroll email itself (Cloudflare can only send
@@ -51,7 +51,7 @@ Paste the printed `database_id` into `wrangler.toml` (replace
 
 ```bash
 npm run db:remote    # creates the tables + starter guides
-npm run deploy       # prints your https://ranch-tasks.<name>.workers.dev URL
+npm run deploy       # prints your https://ranch-task.<name>.workers.dev URL
 ```
 
 Open the URL. The first screen creates the **owner** account. Then go to
