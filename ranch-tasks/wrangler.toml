@@ -1,0 +1,32 @@
+# Cloudflare Workers config. Everything here fits in Cloudflare's free plan.
+name = "ranch-tasks"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+# Static UI (index.html, app.js, styles). /api/* is handled by the Worker.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Free D1 (SQLite) database. Create it with:
+#   npx wrangler d1 create ranch-tasks
+# then paste the database_id it prints below.
+[[d1_databases]]
+binding = "DB"
+database_name = "ranch-tasks"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Monday 13:00 UTC (~8am Central): emails last week's payroll if
+# "Auto-email payroll weekly" is turned on in Settings and email is set up.
+[triggers]
+crons = ["0 13 * * 1"]
+
+# --- Optional: emailing payroll (see README "Emailing payroll") ---
+# Requires a domain on Cloudflare with Email Routing enabled, and the
+# payroll address added as a verified destination address.
+# [[send_email]]
+# name = "PAYROLL_MAILER"
+#
+# [vars]
+# PAYROLL_FROM = "timeclock@yourranch.com"

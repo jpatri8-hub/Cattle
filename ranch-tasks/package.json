@@ -1,0 +1,17 @@
+{
+  "name": "ranch-tasks",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ranch task list, how-to guides, time clock and payroll export on Cloudflare Workers + D1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:local": "wrangler d1 migrations apply ranch-tasks --local",
+    "db:remote": "wrangler d1 migrations apply ranch-tasks --remote",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.0"
+  }
+}

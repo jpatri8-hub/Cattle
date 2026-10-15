@@ -1,0 +1,9 @@
+{
+  "name": "Ranch Tasks",
+  "short_name": "Ranch Tasks",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f2ec",
+  "theme_color": "#2f5d34",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
