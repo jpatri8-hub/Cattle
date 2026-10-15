@@ -10,11 +10,11 @@ binding = "ASSETS"
 
 # Free D1 (SQLite) database. Create it with:
 #   npx wrangler d1 create ranch-tasks
-# then paste the database_id it prints below.
+# then paste the database_id it prints below (already set for this ranch).
 [[d1_databases]]
 binding = "DB"
 database_name = "ranch-tasks"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "e5e988e3-f81f-41d4-8cf7-0aba259030fd"
 migrations_dir = "migrations"
 
 # Monday 13:00 UTC (~8am Central): emails last week's payroll if
