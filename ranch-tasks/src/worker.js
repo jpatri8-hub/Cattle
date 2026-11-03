@@ -2,7 +2,9 @@
 import { EmailMessage } from 'cloudflare:email';
 import { hashPassword, verifyPassword, randomHex, getCookie, sessionCookie } from './auth.js';
 import { nextDueAfterCompletion, nextOccurrence, addDays, parseWeekdays } from '../public/recurrence.js';
-import { localDate, summarize, payrollCsv, weekStartOf } from './payroll.js';
+import {
+  localDate, localHour, summarize, payrollCsv, payPeriodOf, previousPayPeriod, AUTO_CLOCKOUT_HOURS,
+} from './payroll.js';
 import { buildPayrollEmail } from './email.js';
 
 const SESSION_DAYS = 30;
@@ -105,7 +107,7 @@ async function handleApi(request, env, url) {
     const user = r.public ? null : await currentUser(request, env);
     if (!r.public && !user) throw new HttpError(401, 'Please log in');
     let body = {};
-    if (method !== 'GET' && method !== 'DELETE') {
+    if (method !== 'GET' && method !== 'DELETE' && !r.raw) {
       body = await request.json().catch(() => ({}));
     }
     return r.handler({ request, env, url, params, user, body });
@@ -248,17 +250,12 @@ route('PUT', '/api/settings', async ({ env, user, body }) => {
   const allowed = {
     ranch_name: (v) => str(v, 80, true, 'Ranch name'),
     timezone: validTz,
-    week_start: (v) => (String(v) === '1' ? '1' : '0'),
-    overtime_hours: (v) => String(optInt(v, 1, 168) ?? 40),
     payroll_email: (v) => {
       const s = str(v, 200);
       if (s && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)) throw new HttpError(400, 'Invalid payroll email');
       return s;
     },
     payroll_auto_email: (v) => (v === true || v === '1' ? '1' : '0'),
-    map_lat: (v) => String(optNum(v) ?? 36),
-    map_lng: (v) => String(optNum(v) ?? -95),
-    map_zoom: (v) => String(optInt(v, 1, 20) ?? 14),
   };
   const stmts = [];
   for (const [k, fn] of Object.entries(allowed)) {
@@ -326,11 +323,13 @@ route('DELETE', '/api/guides/:id', async ({ env, user, params }) => {
 
 // ===== Tasks =====
 const TASK_SELECT = `SELECT t.*, a.name AS assigned_name, c.name AS created_by_name, g.title AS guide_title,
+  p.name AS property_name, p.photo_type IS NOT NULL AS property_has_photo, p.photo_updated_at AS property_photo_at,
   (SELECT MAX(completed_at) FROM completions x WHERE x.task_id = t.id) AS last_completed_at
   FROM tasks t
   LEFT JOIN users a ON a.id = t.assigned_to
   LEFT JOIN users c ON c.id = t.created_by
-  LEFT JOIN guides g ON g.id = t.guide_id`;
+  LEFT JOIN guides g ON g.id = t.guide_id
+  LEFT JOIN properties p ON p.id = t.property_id`;
 
 route('GET', '/api/tasks', async ({ env, url }) => {
   const status = url.searchParams.get('status') || 'open';
@@ -369,12 +368,14 @@ async function taskFields(env, body, settings) {
     recur_interval: recur_type === 'none' ? 1 : optInt(body.recur_interval, 1, 52) || 1,
     recur_weekdays: recur_type === 'weekly' ? parseWeekdays(body.recur_weekdays).join(',') : '',
     est_minutes: optInt(body.est_minutes, 0, 100000),
-    lat: optNum(body.lat),
-    lng: optNum(body.lng),
     location_name: str(body.location_name, 120),
+    property_id: optInt(body.property_id, 1, 1e9),
+    pin_x: optNum(body.pin_x),
+    pin_y: optNum(body.pin_y),
   };
-  if ((t.lat == null) !== (t.lng == null)) throw new HttpError(400, 'Location needs both latitude and longitude');
-  if (t.lat != null && (Math.abs(t.lat) > 90 || Math.abs(t.lng) > 180)) throw new HttpError(400, 'Location out of range');
+  // A spot on the property photo, as 0..1 fractions of its width and height.
+  if (!t.property_id || t.pin_x == null || t.pin_y == null) t.pin_x = t.pin_y = null;
+  else if (t.pin_x < 0 || t.pin_x > 1 || t.pin_y < 0 || t.pin_y > 1) throw new HttpError(400, 'Marked spot is off the photo');
   if (t.recur_type !== 'none') {
     // Recurring tasks need a start date; the schedule is computed from it.
     if (!t.due_date) t.due_date = today(settings);
@@ -393,6 +394,10 @@ async function taskFields(env, body, settings) {
     const ok = await env.DB.prepare('SELECT id FROM guides WHERE id = ?').bind(t.guide_id).first();
     if (!ok) throw new HttpError(400, 'Unknown guide');
   }
+  if (t.property_id) {
+    const ok = await env.DB.prepare('SELECT id FROM properties WHERE id = ?').bind(t.property_id).first();
+    if (!ok) throw new HttpError(400, 'Unknown property');
+  }
   return t;
 }
 
@@ -401,10 +406,10 @@ route('POST', '/api/tasks', async ({ env, user, body }) => {
   const t = await taskFields(env, body, settings);
   const res = await env.DB.prepare(
     `INSERT INTO tasks (title, description, guide_id, assigned_to, priority, due_date, recur_type, recur_interval,
-       recur_weekdays, recur_anchor, est_minutes, lat, lng, location_name, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       recur_weekdays, recur_anchor, est_minutes, location_name, property_id, pin_x, pin_y, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(t.title, t.description, t.guide_id, t.assigned_to, t.priority, t.due_date, t.recur_type, t.recur_interval,
-    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.lat, t.lng, t.location_name, user.id).run();
+    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.pin_x, t.pin_y, user.id).run();
   return json({ id: res.meta.last_row_id });
 });
 
@@ -431,10 +436,11 @@ route('PUT', '/api/tasks/:id', async ({ env, user, params, body }) => {
   const status = body.status === 'open' && existing.status !== 'open' ? 'open' : existing.status;
   await env.DB.prepare(
     `UPDATE tasks SET title = ?, description = ?, guide_id = ?, assigned_to = ?, priority = ?, due_date = ?,
-       recur_type = ?, recur_interval = ?, recur_weekdays = ?, recur_anchor = ?, est_minutes = ?, lat = ?, lng = ?,
-       location_name = ?, status = ?, updated_at = ? WHERE id = ?`
+       recur_type = ?, recur_interval = ?, recur_weekdays = ?, recur_anchor = ?, est_minutes = ?,
+       location_name = ?, property_id = ?, pin_x = ?, pin_y = ?, status = ?, updated_at = ? WHERE id = ?`
   ).bind(t.title, t.description, t.guide_id, t.assigned_to, t.priority, t.due_date, t.recur_type, t.recur_interval,
-    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.lat, t.lng, t.location_name, status, nowIso(), id).run();
+    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.pin_x, t.pin_y,
+    status, nowIso(), id).run();
   return json({ ok: true });
 });
 
@@ -455,9 +461,9 @@ route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => 
   const day = today(settings);
   const stmts = [
     env.DB.prepare(
-      `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, minutes_spent, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, optInt(body.minutes_spent, 0, 100000), str(body.notes, 5000)),
+      `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(body.notes, 5000)),
   ];
   let next = null;
   if (task.recur_type !== 'none') {
@@ -483,7 +489,7 @@ route('GET', '/api/completions', async ({ env, url, user }) => {
   const uid = user.role === 'owner' ? optInt(url.searchParams.get('user_id'), 1, 1e9) : user.id;
   if (uid) { where.push('c.user_id = ?'); args.push(uid); }
   const { results } = await env.DB.prepare(
-    `SELECT c.*, u.name AS user_name, r.name AS reviewer_name, t.guide_id, t.lat, t.lng
+    `SELECT c.*, u.name AS user_name, r.name AS reviewer_name, t.guide_id, t.property_id
      FROM completions c JOIN users u ON u.id = c.user_id LEFT JOIN users r ON r.id = c.reviewed_by
      LEFT JOIN tasks t ON t.id = c.task_id
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.completed_at DESC LIMIT 500`
@@ -516,48 +522,82 @@ route('POST', '/api/completions/approve-all', async ({ env, user }) => {
 });
 
 // ===== Time clock =====
+const MAX_SHIFT_MS = AUTO_CLOCKOUT_HOURS * 3600000;
+
+function logEdit(env, { entry, editor, kind, oldIn = null, oldOut = null, newIn = null, newOut = null, reason = '', workDate }) {
+  return env.DB.prepare(
+    `INSERT INTO time_edits (entry_id, entry_user_id, editor_id, kind, work_date, old_in, old_out, new_in, new_out, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(entry.id, entry.user_id, editor, kind, workDate || entry.work_date, oldIn, oldOut, newIn, newOut, reason);
+}
+
+// Anyone still on the clock after 14 hours is clocked out automatically and
+// asked to confirm or correct the time the next time they open the app.
+async function autoClockOut(env) {
+  const cutoff = new Date(Date.now() - MAX_SHIFT_MS).toISOString();
+  const { results } = await env.DB.prepare(
+    'SELECT * FROM time_entries WHERE clock_out IS NULL AND clock_in <= ?'
+  ).bind(cutoff).all();
+  if (!results.length) return 0;
+  const stmts = [];
+  for (const e of results) {
+    const out = new Date(new Date(e.clock_in).getTime() + MAX_SHIFT_MS).toISOString();
+    stmts.push(env.DB.prepare(
+      'UPDATE time_entries SET clock_out = ?, auto_closed = 1, needs_review = 1 WHERE id = ? AND clock_out IS NULL'
+    ).bind(out, e.id));
+    stmts.push(logEdit(env, {
+      entry: e, editor: null, kind: 'auto_clockout', newIn: e.clock_in, newOut: out,
+      reason: `Still clocked in after ${AUTO_CLOCKOUT_HOURS} hours`,
+    }));
+  }
+  await env.DB.batch(stmts);
+  return results.length;
+}
+
 route('GET', '/api/time/status', async ({ env, user }) => {
-  const open = await env.DB.prepare(
-    'SELECT * FROM time_entries WHERE user_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1'
-  ).bind(user.id).first();
+  await autoClockOut(env);
   const settings = await getSettings(env);
   const day = today(settings);
-  const weekFrom = weekStartOf(day, Number(settings.week_start || 0));
-  const { results } = await env.DB.prepare(
-    'SELECT * FROM time_entries WHERE user_id = ? AND work_date >= ?'
-  ).bind(user.id, weekFrom).all();
-  const s = summarize(results.map((r) => ({ ...r, name: user.name })), {
-    weekStart: Number(settings.week_start || 0), overtimeHours: Number(settings.overtime_hours || 40),
-  })[0];
-  return json({ open, todayHours: s?.days[day] || 0, weekHours: s?.total || 0 });
+  const period = payPeriodOf(day);
+  const [open, { results }, { results: needsFix }] = await Promise.all([
+    env.DB.prepare('SELECT * FROM time_entries WHERE user_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1')
+      .bind(user.id).first(),
+    env.DB.prepare('SELECT * FROM time_entries WHERE user_id = ? AND work_date >= ? AND work_date <= ?')
+      .bind(user.id, period.from, period.to).all(),
+    env.DB.prepare('SELECT * FROM time_entries WHERE user_id = ? AND needs_review = 1 ORDER BY clock_in')
+      .bind(user.id).all(),
+  ]);
+  const s = summarize(results.map((r) => ({ ...r, name: user.name })))[0];
+  return json({ open, todayHours: s?.days[day] || 0, periodHours: s?.total || 0, period, needsFix });
 });
 
 route('POST', '/api/time/clock-in', async ({ env, user, body }) => {
+  await autoClockOut(env);
   const open = await env.DB.prepare('SELECT id FROM time_entries WHERE user_id = ? AND clock_out IS NULL').bind(user.id).first();
   if (open) throw new HttpError(400, 'You are already clocked in');
   const settings = await getSettings(env);
   const t = nowIso();
-  await env.DB.prepare(
-    'INSERT INTO time_entries (user_id, clock_in, work_date, in_lat, in_lng, note) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(user.id, t, localDate(t, settings.timezone), optNum(body.lat), optNum(body.lng), str(body.note, 500)).run();
+  await env.DB.prepare('INSERT INTO time_entries (user_id, clock_in, work_date, note) VALUES (?, ?, ?, ?)')
+    .bind(user.id, t, localDate(t, settings.timezone), str(body.note, 500)).run();
   return json({ ok: true });
 });
 
 route('POST', '/api/time/clock-out', async ({ env, user, body }) => {
+  await autoClockOut(env);
   const open = await env.DB.prepare(
     'SELECT * FROM time_entries WHERE user_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1'
   ).bind(user.id).first();
   if (!open) throw new HttpError(400, 'You are not clocked in');
   const note = [open.note, str(body.note, 500)].filter(Boolean).join(' / ');
-  await env.DB.prepare('UPDATE time_entries SET clock_out = ?, out_lat = ?, out_lng = ?, note = ? WHERE id = ?')
-    .bind(nowIso(), optNum(body.lat), optNum(body.lng), note, open.id).run();
+  await env.DB.prepare('UPDATE time_entries SET clock_out = ?, note = ? WHERE id = ?').bind(nowIso(), note, open.id).run();
   return json({ ok: true });
 });
 
+// Defaults to the current pay period.
 function rangeParams(url, settings) {
-  const day = today(settings);
-  const to = optDate(url.searchParams.get('to')) || day;
-  const from = optDate(url.searchParams.get('from')) || addDays(to, -13);
+  const period = payPeriodOf(today(settings));
+  const from = optDate(url.searchParams.get('from')) || period.from;
+  const to = optDate(url.searchParams.get('to')) || period.to;
   if (from > to) throw new HttpError(400, '"From" must be before "to"');
   return { from, to };
 }
@@ -573,6 +613,7 @@ async function timeEntries(env, from, to, userId) {
 }
 
 route('GET', '/api/time', async ({ env, url, user }) => {
+  await autoClockOut(env);
   const settings = await getSettings(env);
   const { from, to } = rangeParams(url, settings);
   const uid = user.role === 'owner' ? optInt(url.searchParams.get('user_id'), 1, 1e9) : user.id;
@@ -586,50 +627,119 @@ function parseIso(v, field) {
   return d.toISOString();
 }
 
+function validateTimes(cin, cout) {
+  if (!cin) throw new HttpError(400, 'Clock in time is required');
+  const limit = Date.now() + 5 * 60000;
+  if (new Date(cin) > limit || (cout && new Date(cout) > limit)) throw new HttpError(400, "Times can't be in the future");
+  if (cout && cout <= cin) throw new HttpError(400, 'Clock out must be after clock in');
+  if (cout && new Date(cout) - new Date(cin) > 24 * 3600000) throw new HttpError(400, "A single punch can't be longer than 24 hours");
+}
+
+// The app's time pickers only go to the minute; keep the original seconds
+// when the minute didn't change so an untouched time isn't counted as edited.
+const sameMinute = (a, b) => a && b && Math.floor(new Date(a) / 60000) === Math.floor(new Date(b) / 60000);
+
+// Owners can add a punch for anyone; employees can add a missed punch for
+// themselves. Every add is logged.
 route('POST', '/api/time', async ({ env, user, body }) => {
-  requireOwner(user);
+  const isOwnerUser = user.role === 'owner';
   const settings = await getSettings(env);
-  const uid = optInt(body.user_id, 1, 1e9);
+  const uid = isOwnerUser ? optInt(body.user_id, 1, 1e9) : user.id;
   if (!uid) throw new HttpError(400, 'Pick an employee');
+  const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(uid).first();
+  if (!target) throw new HttpError(400, 'Unknown employee');
+  const reason = str(body.reason, 500);
+  if (!isOwnerUser && !reason) throw new HttpError(400, 'Please say why you are adding this punch');
   const cin = parseIso(body.clock_in, 'clock in');
   const cout = parseIso(body.clock_out, 'clock out');
-  if (!cin) throw new HttpError(400, 'Clock in time is required');
-  if (cout && cout <= cin) throw new HttpError(400, 'Clock out must be after clock in');
-  await env.DB.prepare(
-    'INSERT INTO time_entries (user_id, clock_in, clock_out, work_date, note, edited_by) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(uid, cin, cout, localDate(cin, settings.timezone), str(body.note, 500), user.id).run();
+  if (!cout) throw new HttpError(400, 'Clock out time is required');
+  validateTimes(cin, cout);
+  const workDate = localDate(cin, settings.timezone);
+  const res = await env.DB.prepare(
+    'INSERT INTO time_entries (user_id, clock_in, clock_out, work_date, note, edited, edited_by) VALUES (?, ?, ?, ?, ?, 1, ?)'
+  ).bind(uid, cin, cout, workDate, reason, user.id).run();
+  await logEdit(env, {
+    entry: { id: res.meta.last_row_id, user_id: uid, work_date: workDate },
+    editor: user.id, kind: 'add', newIn: cin, newOut: cout, reason,
+  }).run();
   return json({ ok: true });
 });
 
+// Owners can change anyone's punch; employees can change their own. The
+// before/after times and the reason are kept in time_edits for the owner.
 route('PUT', '/api/time/:id', async ({ env, user, params, body }) => {
-  requireOwner(user);
+  const isOwnerUser = user.role === 'owner';
+  const e = await env.DB.prepare('SELECT * FROM time_entries WHERE id = ?').bind(Number(params.id)).first();
+  if (!e) throw new HttpError(404, 'Punch not found');
+  if (!isOwnerUser && e.user_id !== user.id) throw new HttpError(403, 'You can only change your own time');
   const settings = await getSettings(env);
-  const cin = parseIso(body.clock_in, 'clock in');
-  const cout = parseIso(body.clock_out, 'clock out');
-  if (!cin) throw new HttpError(400, 'Clock in time is required');
-  if (cout && cout <= cin) throw new HttpError(400, 'Clock out must be after clock in');
-  const res = await env.DB.prepare(
-    'UPDATE time_entries SET clock_in = ?, clock_out = ?, work_date = ?, note = ?, edited_by = ? WHERE id = ?'
-  ).bind(cin, cout, localDate(cin, settings.timezone), str(body.note, 500), user.id, Number(params.id)).run();
-  if (!res.meta.changes) throw new HttpError(404, 'Not found');
-  return json({ ok: true });
+  let cin = parseIso(body.clock_in, 'clock in');
+  let cout = parseIso(body.clock_out, 'clock out');
+  if (sameMinute(cin, e.clock_in)) cin = e.clock_in;
+  if (sameMinute(cout, e.clock_out)) cout = e.clock_out;
+  validateTimes(cin, cout);
+  const changed = cin !== e.clock_in || cout !== e.clock_out;
+  const reason = str(body.reason, 500);
+  if (!changed && !e.needs_review) return json({ ok: true, changed: false });
+  if (changed && !isOwnerUser && !reason) throw new HttpError(400, 'Please say why you are changing this punch');
+  const workDate = localDate(cin, settings.timezone);
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE time_entries SET clock_in = ?, clock_out = ?, work_date = ?, needs_review = 0,
+         edited = CASE WHEN ? THEN 1 ELSE edited END, edited_by = CASE WHEN ? THEN ? ELSE edited_by END WHERE id = ?`
+    ).bind(cin, cout, workDate, changed ? 1 : 0, changed ? 1 : 0, user.id, e.id),
+    logEdit(env, {
+      entry: e, editor: user.id, kind: changed ? 'edit' : 'confirm', workDate,
+      oldIn: e.clock_in, oldOut: e.clock_out, newIn: cin, newOut: cout,
+      reason: reason || (changed ? '' : 'Confirmed the automatic clock-out time'),
+    }),
+  ]);
+  return json({ ok: true, changed });
 });
 
 route('DELETE', '/api/time/:id', async ({ env, user, params }) => {
   requireOwner(user);
-  await env.DB.prepare('DELETE FROM time_entries WHERE id = ?').bind(Number(params.id)).run();
+  const e = await env.DB.prepare('SELECT * FROM time_entries WHERE id = ?').bind(Number(params.id)).first();
+  if (!e) throw new HttpError(404, 'Punch not found');
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM time_entries WHERE id = ?').bind(e.id),
+    logEdit(env, { entry: e, editor: user.id, kind: 'delete', oldIn: e.clock_in, oldOut: e.clock_out }),
+  ]);
   return json({ ok: true });
 });
 
-// ===== Payroll =====
+// Change log for the time clock. Owners see everyone's; employees their own.
+route('GET', '/api/time/edits', async ({ env, url, user }) => {
+  const settings = await getSettings(env);
+  const where = [];
+  const args = [];
+  const entryId = optInt(url.searchParams.get('entry_id'), 1, 1e12);
+  if (entryId) {
+    where.push('x.entry_id = ?');
+    args.push(entryId);
+  } else {
+    const { from, to } = rangeParams(url, settings);
+    where.push('x.work_date >= ? AND x.work_date <= ?');
+    args.push(from, to);
+  }
+  if (user.role !== 'owner') {
+    where.push('x.entry_user_id = ?');
+    args.push(user.id);
+  }
+  const { results } = await env.DB.prepare(
+    `SELECT x.*, u.name AS employee_name, ed.name AS editor_name FROM time_edits x
+     JOIN users u ON u.id = x.entry_user_id LEFT JOIN users ed ON ed.id = x.editor_id
+     WHERE ${where.join(' AND ')} ORDER BY x.created_at DESC LIMIT 500`
+  ).bind(...args).all();
+  return json(results);
+});
+
+// ===== Payroll (semi-monthly: 1st–15th and 16th–end of month) =====
 async function payrollData(env, from, to) {
+  await autoClockOut(env);
   const settings = await getSettings(env);
   const entries = await timeEntries(env, from, to, null);
-  const summary = summarize(entries, {
-    weekStart: Number(settings.week_start || 0),
-    overtimeHours: Number(settings.overtime_hours || 40),
-  });
-  return { settings, entries, summary };
+  return { settings, entries, summary: summarize(entries) };
 }
 
 route('GET', '/api/payroll', async ({ env, url, user }) => {
@@ -662,12 +772,13 @@ async function emailPayroll(env, from, to) {
   const { settings, entries, summary } = await payrollData(env, from, to);
   if (!settings.payroll_email) throw new HttpError(400, 'Set the payroll email address in Settings first');
   const csv = payrollCsv(entries, summary, { tz: settings.timezone, from, to });
-  const lines = summary.map((s) => `${s.name}: ${s.total.toFixed(2)} hrs (${s.regular.toFixed(2)} reg, ${s.overtime.toFixed(2)} OT)`);
+  const lines = summary.map((s) => `${s.name}: ${s.total.toFixed(2)} hrs` +
+    (s.edited || s.auto ? ` (${[s.edited && `${s.edited} changed by hand`, s.auto && `${s.auto} auto clock-out`].filter(Boolean).join(', ')})` : ''));
   const raw = buildPayrollEmail({
     from: env.PAYROLL_FROM,
     to: settings.payroll_email,
     subject: `${settings.ranch_name} payroll ${from} to ${to}`,
-    text: `Hours for ${from} through ${to}:\n\n${lines.join('\n') || 'No hours recorded.'}\n\nDetailed timesheet attached (CSV).`,
+    text: `Hours for the pay period ${from} through ${to}:\n\n${lines.join('\n') || 'No hours recorded.'}\n\nDetailed timesheet attached (CSV).`,
     filename: `payroll_${from}_to_${to}.csv`,
     csv,
   });
@@ -686,6 +797,7 @@ route('POST', '/api/payroll/email', async ({ env, user, body }) => {
 
 // ===== Productivity stats =====
 route('GET', '/api/stats', async ({ env, url, user }) => {
+  await autoClockOut(env);
   const settings = await getSettings(env);
   const { from, to } = rangeParams(url, settings);
   const onlyMe = user.role !== 'owner';
@@ -693,77 +805,116 @@ route('GET', '/api/stats', async ({ env, url, user }) => {
     `SELECT id, name, role FROM users WHERE active = 1 ${onlyMe ? 'AND id = ?' : ''} ORDER BY name`
   ).bind(...(onlyMe ? [user.id] : [])).all();
   const { results: comp } = await env.DB.prepare(
-    `SELECT user_id, COUNT(*) AS completed, COALESCE(SUM(minutes_spent), 0) AS task_minutes,
+    `SELECT user_id, COUNT(*) AS completed,
        SUM(CASE WHEN due_date IS NULL OR completed_on <= due_date THEN 1 ELSE 0 END) AS on_time,
        SUM(review_status = 'approved') AS approved, SUM(review_status = 'flagged') AS flagged,
        SUM(review_status = 'pending') AS pending
      FROM completions WHERE completed_on >= ? AND completed_on <= ? GROUP BY user_id`
   ).bind(from, to).all();
-  const entries = await timeEntries(env, from, to, onlyMe ? user.id : null);
-  const hours = summarize(entries, {
-    weekStart: Number(settings.week_start || 0), overtimeHours: Number(settings.overtime_hours || 40),
-  });
-  const { results: daily } = await env.DB.prepare(
-    `SELECT completed_on AS day, user_id, COUNT(*) AS n FROM completions
-     WHERE completed_on >= ? AND completed_on <= ? ${onlyMe ? 'AND user_id = ?' : ''}
-     GROUP BY completed_on, user_id`
-  ).bind(...[from, to].concat(onlyMe ? [user.id] : [])).all();
+  const hours = summarize(await timeEntries(env, from, to, onlyMe ? user.id : null));
   const rows = users.map((u) => {
     const c = comp.find((x) => x.user_id === u.id) || {};
     const h = hours.find((x) => x.user_id === u.id);
-    const total = h ? h.total : 0;
+    const days = h ? Object.keys(h.days).length : 0;
     return {
       user_id: u.id,
       name: u.name,
       role: u.role,
-      hours: total,
-      overtime: h ? h.overtime : 0,
-      days_worked: h ? Object.keys(h.days).length : 0,
+      hours: h ? h.total : 0,
+      days_worked: days,
       completed: c.completed || 0,
-      task_minutes: c.task_minutes || 0,
       on_time: c.on_time || 0,
       approved: c.approved || 0,
       flagged: c.flagged || 0,
       pending: c.pending || 0,
-      tasks_per_day: h && Object.keys(h.days).length ? (c.completed || 0) / Object.keys(h.days).length : 0,
-      utilization: total > 0 ? (c.task_minutes || 0) / 60 / total : null,
+      tasks_per_day: days ? (c.completed || 0) / days : 0,
+      time_changes: h ? h.edited : 0,
+      auto_clockouts: h ? h.auto : 0,
     };
   });
-  return json({ from, to, rows, daily });
+  return json({ from, to, rows });
 });
 
-// ===== Map layers =====
-route('GET', '/api/layers', async ({ env }) => {
-  const { results } = await env.DB.prepare('SELECT id, name, color, visible, geojson FROM map_layers ORDER BY name').all();
-  return json(results.map((r) => ({ ...r, geojson: JSON.parse(r.geojson) })));
+// ===== Properties & aerial photos =====
+const MAX_PHOTO_BYTES = 1900000; // D1 rows top out at 2 MB; the app shrinks photos below this
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PROPERTY_COLS = `p.id, p.name, p.notes, p.photo_type IS NOT NULL AS has_photo, p.photo_width, p.photo_height,
+  p.photo_updated_at, (SELECT COUNT(*) FROM tasks t WHERE t.property_id = p.id AND t.status = 'open') AS open_tasks`;
+
+route('GET', '/api/properties', async ({ env }) => {
+  const { results } = await env.DB.prepare(`SELECT ${PROPERTY_COLS} FROM properties p ORDER BY p.name`).all();
+  return json(results);
 });
 
-route('POST', '/api/layers', async ({ env, user, body }) => {
-  const name = str(body.name, 120, true, 'Layer name');
-  const color = /^#[0-9a-fA-F]{6}$/.test(body.color || '') ? body.color : '#ff7800';
-  const gj = body.geojson;
-  if (!gj || gj.type !== 'FeatureCollection' || !Array.isArray(gj.features)) {
-    throw new HttpError(400, 'Layer must be a GeoJSON FeatureCollection');
-  }
-  const text = JSON.stringify(gj);
-  if (text.length > 900000) throw new HttpError(400, 'That file is too large (max ~900 KB after conversion)');
-  const res = await env.DB.prepare('INSERT INTO map_layers (name, color, geojson, created_by) VALUES (?, ?, ?, ?)')
-    .bind(name, color, text, user.id).run();
+route('GET', '/api/properties/:id', async ({ env, params }) => {
+  const p = await env.DB.prepare(`SELECT ${PROPERTY_COLS} FROM properties p WHERE p.id = ?`).bind(Number(params.id)).first();
+  if (!p) throw new HttpError(404, 'Property not found');
+  const { results: tasks } = await env.DB.prepare(
+    `SELECT t.id, t.title, t.due_date, t.priority, t.pin_x, t.pin_y, t.location_name, a.name AS assigned_name
+     FROM tasks t LEFT JOIN users a ON a.id = t.assigned_to
+     WHERE t.property_id = ? AND t.status = 'open' ORDER BY t.due_date IS NULL, t.due_date, t.title`
+  ).bind(p.id).all();
+  return json({ ...p, tasks });
+});
+
+async function propertyFields(env, body, id = null) {
+  const name = str(body.name, 80, true, 'Property name');
+  const dup = await env.DB.prepare('SELECT id FROM properties WHERE name = ? AND id IS NOT ?').bind(name, id).first();
+  if (dup) throw new HttpError(400, 'A property with that name already exists');
+  return { name, notes: str(body.notes, 2000) };
+}
+
+route('POST', '/api/properties', async ({ env, user, body }) => {
+  requireOwner(user);
+  const p = await propertyFields(env, body);
+  const res = await env.DB.prepare('INSERT INTO properties (name, notes) VALUES (?, ?)').bind(p.name, p.notes).run();
   return json({ id: res.meta.last_row_id });
 });
 
-route('PUT', '/api/layers/:id', async ({ env, user, params, body }) => {
+route('PUT', '/api/properties/:id', async ({ env, user, params, body }) => {
   requireOwner(user);
-  const color = /^#[0-9a-fA-F]{6}$/.test(body.color || '') ? body.color : '#ff7800';
-  await env.DB.prepare('UPDATE map_layers SET name = ?, color = ?, visible = ? WHERE id = ?')
-    .bind(str(body.name, 120, true, 'Layer name'), color, body.visible ? 1 : 0, Number(params.id)).run();
+  const id = Number(params.id);
+  const p = await propertyFields(env, body, id);
+  const res = await env.DB.prepare('UPDATE properties SET name = ?, notes = ? WHERE id = ?').bind(p.name, p.notes, id).run();
+  if (!res.meta.changes) throw new HttpError(404, 'Property not found');
   return json({ ok: true });
 });
 
-route('DELETE', '/api/layers/:id', async ({ env, user, params }) => {
+route('DELETE', '/api/properties/:id', async ({ env, user, params }) => {
   requireOwner(user);
-  await env.DB.prepare('DELETE FROM map_layers WHERE id = ?').bind(Number(params.id)).run();
+  const id = Number(params.id);
+  await env.DB.batch([
+    env.DB.prepare('UPDATE tasks SET property_id = NULL, pin_x = NULL, pin_y = NULL WHERE property_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM properties WHERE id = ?').bind(id),
+  ]);
   return json({ ok: true });
+});
+
+route('PUT', '/api/properties/:id/photo', async ({ env, user, params, request, url }) => {
+  requireOwner(user);
+  const type = (request.headers.get('Content-Type') || '').split(';')[0].trim();
+  if (!PHOTO_TYPES.includes(type)) throw new HttpError(400, 'Photo must be a JPEG, PNG or WebP image');
+  const buf = await request.arrayBuffer();
+  if (!buf.byteLength) throw new HttpError(400, 'No photo received');
+  if (buf.byteLength > MAX_PHOTO_BYTES) throw new HttpError(413, 'That photo is too large even after shrinking it');
+  const res = await env.DB.prepare(
+    'UPDATE properties SET photo = ?, photo_type = ?, photo_width = ?, photo_height = ?, photo_updated_at = ? WHERE id = ?'
+  ).bind(buf, type, optInt(url.searchParams.get('w'), 1, 100000), optInt(url.searchParams.get('h'), 1, 100000),
+    nowIso(), Number(params.id)).run();
+  if (!res.meta.changes) throw new HttpError(404, 'Property not found');
+  return json({ ok: true });
+}, { raw: true });
+
+route('GET', '/api/properties/:id/photo', async ({ env, params }) => {
+  const row = await env.DB.prepare('SELECT photo, photo_type FROM properties WHERE id = ?').bind(Number(params.id)).first();
+  if (!row || !row.photo) throw new HttpError(404, 'No photo for this property');
+  return new Response(new Uint8Array(row.photo), {
+    headers: {
+      'Content-Type': row.photo_type,
+      // The app adds ?v=<upload time> to the URL, so a new upload gets a new URL.
+      'Cache-Control': 'private, max-age=31536000, immutable',
+    },
+  });
 });
 
 // ---------- entry points ----------
@@ -783,17 +934,23 @@ export default {
     return env.ASSETS.fetch(request);
   },
 
-  // Weekly cron: email last full payroll week if auto-email is on.
+  // Hourly cron: auto clock-out anyone past 14 hours, and on the 1st and 16th
+  // at 8am ranch time email the pay period that just ended (if turned on).
   async scheduled(event, env) {
+    await autoClockOut(env);
     const settings = await getSettings(env);
     if (settings.payroll_auto_email !== '1') return;
-    const thisWeek = weekStartOf(today(settings), Number(settings.week_start || 0));
-    const from = addDays(thisWeek, -7);
-    const to = addDays(thisWeek, -1);
-    try {
-      await emailPayroll(env, from, to);
-    } catch (err) {
-      console.error('Payroll email failed', err);
+    const now = new Date(event.scheduledTime || Date.now()).toISOString();
+    const tz = settings.timezone || 'America/Chicago';
+    const day = localDate(now, tz);
+    const dom = Number(day.slice(8));
+    if ((dom === 1 || dom === 16) && localHour(now, tz) === 8) {
+      const p = previousPayPeriod(day);
+      try {
+        await emailPayroll(env, p.from, p.to);
+      } catch (err) {
+        console.error('Payroll email failed', err);
+      }
     }
   },
 };
