@@ -17,10 +17,11 @@ database_name = "ranch-tasks"
 database_id = "e5e988e3-f81f-41d4-8cf7-0aba259030fd"
 migrations_dir = "migrations"
 
-# Monday 13:00 UTC (~8am Central): emails last week's payroll if
-# "Auto-email payroll weekly" is turned on in Settings and email is set up.
+# Runs every hour: clocks out anyone still on the clock after 14 hours, and on
+# the 1st and 16th at 8am ranch time emails the pay period that just ended
+# (if that's turned on in Settings and email is set up).
 [triggers]
-crons = ["0 13 * * 1"]
+crons = ["0 * * * *"]
 
 # --- Optional: emailing payroll (see README "Emailing payroll") ---
 # Requires a domain on Cloudflare with Email Routing enabled, and the

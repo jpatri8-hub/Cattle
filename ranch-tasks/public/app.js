@@ -1,6 +1,6 @@
 import { esc, renderGuide } from './md.js';
-import { fileToGeoJSON } from './geo.js';
 import { describeRule, addDays, parseDate } from './recurrence.js';
+import { payPeriodOf, previousPayPeriod } from './payperiod.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -103,28 +103,14 @@ function userOptions(selected, { blank = 'Anyone' } = {}) {
 
 async function loadUsers() { S.users = await api('GET', '/users'); }
 
-function getPosition() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-    );
-  });
-}
-
-// Date ranges for reports.
+// Date ranges for reports. Pay periods are the 1st–15th and 16th–end of month.
 function ranges() {
-  const ws = Number(S.settings.week_start || 0);
-  const dow = parseDate(S.today).getUTCDay();
-  const thisWeek = addDays(S.today, -((dow - ws + 7) % 7));
-  const monthStart = S.today.slice(0, 8) + '01';
+  const cur = payPeriodOf(S.today);
+  const prev = previousPayPeriod(S.today);
   return {
-    week: { label: 'This week', from: thisWeek, to: S.today },
-    lastweek: { label: 'Last week', from: addDays(thisWeek, -7), to: addDays(thisWeek, -1) },
-    two: { label: 'Last 2 weeks', from: addDays(thisWeek, -7), to: S.today },
-    month: { label: 'This month', from: monthStart, to: S.today },
+    period: { label: 'This pay period', from: cur.from, to: cur.to },
+    last: { label: 'Last pay period', from: prev.from, to: prev.to },
+    month: { label: 'This month', from: S.today.slice(0, 8) + '01', to: S.today },
     d30: { label: 'Last 30 days', from: addDays(S.today, -29), to: S.today },
   };
 }
@@ -133,50 +119,58 @@ function rangeChips(active, attr = 'data-range') {
     `<button class="chip ${k === active ? 'on' : ''}" ${attr}="${k}">${r.label}</button>`).join('')}</div>`;
 }
 
-// ---------- maps ----------
-function baseLayers() {
-  const esri = (svc) => `https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`;
-  return {
-    Satellite: L.tileLayer(esri('World_Imagery'), { maxZoom: 19, attribution: 'Imagery © Esri' }),
-    Topo: L.tileLayer(esri('World_Topo_Map'), { maxZoom: 19, attribution: '© Esri' }),
-    Street: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
-  };
+// ---------- property photos ----------
+const photoUrl = (p) => `/api/properties/${p.id}/photo?v=${encodeURIComponent(p.photo_updated_at || '')}`;
+function pinClass(t) {
+  if (!t.due_date) return 'anytime';
+  if (t.due_date < S.today) return 'late';
+  if (t.due_date === S.today) return 'today';
+  return 'soon';
 }
-function makeMap(el, { center, zoom } = {}) {
-  const base = baseLayers();
-  const map = L.map(el, { layers: [base.Satellite] });
-  const c = center || [Number(S.settings.map_lat), Number(S.settings.map_lng)];
-  map.setView(c, zoom || Number(S.settings.map_zoom) || 14);
-  return { map, base };
+// pins: [{ x, y, label, cls, href, title }] with x/y as 0..1 fractions of the photo.
+function photoWithPins(p, pins = [], id = '') {
+  return `<div class="photo-wrap" ${id ? `id="${id}"` : ''}>
+    <img src="${photoUrl(p)}" alt="Aerial photo of ${esc(p.name)}" draggable="false">
+    ${pins.map((pin) => {
+      const style = `left:${Number(pin.x) * 100}%;top:${Number(pin.y) * 100}%`;
+      const attrs = `class="pin ${pin.cls || ''}" style="${style}" title="${esc(pin.title || '')}"`;
+      return pin.href ? `<a ${attrs} href="${pin.href}">${esc(pin.label ?? '')}</a>` : `<span ${attrs}>${esc(pin.label ?? '')}</span>`;
+    }).join('')}
+  </div>`;
 }
-function layerToLeaflet(layer, onPoint) {
-  return L.geoJSON(layer.geojson, {
-    style: { color: layer.color, weight: 3, fillOpacity: 0.12 },
-    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#fff', weight: 2, fillColor: layer.color, fillOpacity: 1 }),
-    onEachFeature: (f, l) => {
-      const name = f.properties?.name;
-      if (name) l.bindTooltip(name);
-      if (onPoint && f.geometry.type === 'Point') {
-        l.on('click', () => onPoint(f.geometry.coordinates[1], f.geometry.coordinates[0], name || ''));
-      } else if (name || f.properties?.description) {
-        l.bindPopup(`<b>${esc(name || '')}</b><div>${esc(f.properties?.description || '')}</div>`);
-      }
-    },
+
+// Shrink an aerial photo in the browser so it fits in the database (< ~1.8 MB).
+async function shrinkPhoto(file) {
+  const bmp = await createImageBitmap(file);
+  for (const maxSide of [2400, 2000, 1600, 1200]) {
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * scale);
+    const h = Math.round(bmp.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    for (const q of [0.85, 0.75, 0.65]) {
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', q));
+      if (blob && blob.size <= 1800000) return { blob, w, h };
+    }
+  }
+  throw new Error('Could not shrink that photo enough. Try a smaller image.');
+}
+async function uploadPhoto(propertyId, file) {
+  const { blob, w, h } = await shrinkPhoto(file);
+  const res = await fetch(`/api/properties/${propertyId}/photo?w=${w}&h=${h}`, {
+    method: 'PUT', credentials: 'same-origin', headers: { 'X-Ranch': '1', 'Content-Type': 'image/jpeg' }, body: blob,
   });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Photo upload failed');
 }
-function taskColor(t) {
-  if (!t.due_date) return '#1e88e5';
-  if (t.due_date < S.today) return '#d32f2f';
-  if (t.due_date === S.today) return '#f57c00';
-  return '#43a047';
-}
-const mapsLink = (lat, lng) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
 // ---------- clock ----------
 let clockTick;
 async function refreshClock() {
   try { S.clock = await api('GET', '/time/status'); } catch { return; }
   paintClock();
+  askToFixAutoClockOut();
 }
 function paintClock() {
   const pill = $('#clockPill');
@@ -197,28 +191,57 @@ function paintClock() {
 function clockCardInner() {
   const c = S.clock;
   if (!c) return '<div class="muted">Loading time clock…</div>';
+  const period = `This pay period (${fmtDay(c.period.from)} – ${fmtDay(c.period.to)}): ${hrs(c.periodHours)} hrs`;
   if (c.open) {
     return `<div class="status">Clocked in since <b>${fmtTime(c.open.clock_in)}</b></div>
       <div class="timer" id="clockTimer">${duration(Date.now() - new Date(c.open.clock_in))}</div>
-      <div class="muted small" style="margin-bottom:10px">This week: ${hrs(c.weekHours)} hrs</div>
+      <div class="muted small" style="margin-bottom:10px">${period}</div>
       <button class="big danger" data-clock="out">Clock out</button>`;
   }
   return `<div class="status">You're <b>off the clock</b></div>
-    <div class="muted small" style="margin-bottom:10px">Today: ${hrs(c.todayHours)} hrs · This week: ${hrs(c.weekHours)} hrs</div>
+    <div class="muted small" style="margin-bottom:10px">Today: ${hrs(c.todayHours)} hrs · ${period}</div>
     <button class="big ok" data-clock="in">Clock in</button>`;
 }
+
+// After a 14-hour auto clock-out, ask the employee for their real clock-out time.
+let fixOpen = false;
+function askToFixAutoClockOut() {
+  const e = S.clock?.needsFix?.[0];
+  if (!e || fixOpen || modal.open) return;
+  fixOpen = true;
+  openModal(`<h2>Please fix your clock-out</h2>
+    <p>You were still clocked in after <b>14 hours</b>, so you were clocked out automatically.</p>
+    <p class="card" style="background:var(--bg)"><b>${fmtDay(e.work_date)}</b><br>Clocked in ${fmtDateTime(e.clock_in)}<br>
+      Auto clocked out ${fmtDateTime(e.clock_out)}</p>
+    <form id="fixForm">
+      <div class="field"><label>What time did you actually stop working?</label>
+        <input type="datetime-local" name="clock_out" required value="${toLocalInput(e.clock_out)}"></div>
+      <div class="field"><label>Note</label><input name="reason" maxlength="500" value="Forgot to clock out"></div>
+      <button class="primary big" type="submit">Save</button>
+      <p class="muted small">If the time above is right, just tap Save. The owner can see this change.</p>
+    </form>`);
+  modal.addEventListener('close', () => { fixOpen = false; }, { once: true });
+  $('#fixForm').addEventListener('submit', guard(async (ev) => {
+    const d = formData(ev.target);
+    await api('PUT', `/time/${e.id}`, { clock_in: e.clock_in, clock_out: fromLocalInput(d.clock_out), reason: d.reason });
+    closeModal();
+    toast('Thanks, your time is fixed.');
+    await refreshClock();
+    if (location.hash.startsWith('#/time')) render();
+  }));
+}
+
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-clock]');
   if (!b || b.disabled) return;
   if (b.dataset.clock === 'out' && !confirm('Clock out now?')) return;
   b.disabled = true;
   try {
-    const pos = await getPosition();
     if (b.dataset.clock === 'in') {
-      await api('POST', '/time/clock-in', pos || {});
+      await api('POST', '/time/clock-in', {});
       toast('Clocked in. Have a good one!');
     } else {
-      await api('POST', '/time/clock-out', pos || {});
+      await api('POST', '/time/clock-out', {});
       toast('Clocked out.');
     }
     await refreshClock();
@@ -242,11 +265,8 @@ async function refreshBadge() {
 
 // ---------- complete task ----------
 function completeTask(task, after) {
-  const est = task.est_minutes ?? '';
   openModal(`<h2>Mark done: ${esc(task.title)}</h2>
     <form id="doneForm" class="stack">
-      <div class="field"><label for="dm">Time spent (minutes)</label>
-        <input id="dm" name="minutes_spent" type="number" inputmode="numeric" min="0" value="${esc(est)}" placeholder="e.g. 45"></div>
       <div class="field"><label for="dn">Notes for the owner (optional)</label>
         <textarea id="dn" name="notes" placeholder="Anything to report? Broken water float, low on mineral, etc."></textarea></div>
       <div class="row"><button class="primary grow" type="submit">✓ Mark complete</button><button type="button" data-close>Cancel</button></div>
@@ -307,7 +327,9 @@ function taskRow(t) {
   meta.push(`<span>👤 ${esc(t.assigned_name || 'Anyone')}</span>`);
   if (t.priority === 'high') meta.push('<span class="tag high">High</span>');
   if (t.guide_id) meta.push('<span title="Has instructions">📘 Guide</span>');
-  if (t.lat != null) meta.push(`<span>📍 ${esc(t.location_name || 'Map')}</span>`);
+  if (t.property_name || t.location_name) {
+    meta.push(`<span>📍 ${esc([t.property_name, t.location_name].filter(Boolean).join(' · '))}</span>`);
+  }
   if (t.est_minutes) meta.push(`<span>~${t.est_minutes} min</span>`);
   return `<div class="task">
     <button class="done-btn" data-done="${t.id}" aria-label="Mark ${esc(t.title)} done" title="Mark done">✓</button>
@@ -362,6 +384,7 @@ async function viewTask(id) {
   const canEdit = isOwner() || t.created_by === S.user.id;
   const late = t.due_date && t.due_date < S.today;
   const chkKey = `chk:${t.id}:${t.due_date || 'any'}`;
+  const prop = t.property_id ? { id: t.property_id, name: t.property_name, photo_updated_at: t.property_photo_at } : null;
   main.innerHTML = `
     <p><a href="#/">← Tasks</a></p>
     <div class="card">
@@ -377,17 +400,20 @@ async function viewTask(id) {
       ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ''}
       ${t.status === 'open' ? '<button class="primary big" id="doneBtn" style="margin-top:8px">✓ Mark complete</button>' : ''}
     </div>
+    ${prop || t.location_name ? `<div class="card"><div class="row between"><h2 style="margin:0">📍 ${esc(prop ? prop.name : t.location_name)}</h2>
+        ${prop ? `<a class="small" href="#/property/${prop.id}">Property</a>` : ''}</div>
+        ${prop && t.location_name ? `<p class="muted small" style="margin:4px 0 0">${esc(t.location_name)}</p>` : ''}
+        ${prop && t.property_has_photo ? `<div style="margin-top:8px">${photoWithPins(prop, t.pin_x != null ? [{ x: t.pin_x, y: t.pin_y, cls: 'mark' }] : [])}</div>
+          <p class="small" style="margin-bottom:0"><a href="${photoUrl(prop)}" target="_blank" rel="noopener">Open full-size photo</a> (pinch to zoom)</p>` : ''}
+      </div>` : ''}
     ${t.guide ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
         <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
         <p class="muted small">Tick off steps as you go.</p>
         <div class="guide-body" id="guideBody">${renderGuide(t.guide.body, { checklist: true })}</div></div>` : ''}
-    ${t.lat != null ? `<div class="card"><div class="row between"><h2 style="margin:0">📍 ${esc(t.location_name || 'Location')}</h2>
-        <a class="small" target="_blank" rel="noopener" href="${mapsLink(t.lat, t.lng)}">Directions</a></div>
-        <div class="mini-map" id="miniMap" style="margin-top:8px"></div></div>` : ''}
     <div class="card"><h2 style="margin-top:0">History</h2>
       ${t.history.length ? t.history.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
         <div class="row between"><b>${esc(c.user_name)}</b><span class="tag ${c.review_status}">${c.review_status}</span></div>
-        <div class="small muted">${fmtDateTime(c.completed_at)}${c.minutes_spent != null ? ` · ${c.minutes_spent} min` : ''}${c.due_date && c.completed_on > c.due_date ? ' · <span class="tag late">late</span>' : ''}</div>
+        <div class="small muted">${fmtDateTime(c.completed_at)}${c.due_date && c.completed_on > c.due_date ? ' · <span class="tag late">late</span>' : ''}</div>
         ${c.notes ? `<div class="small desc">${esc(c.notes)}</div>` : ''}
         ${c.review_note ? `<div class="small"><b>${esc(c.reviewer_name || 'Owner')}:</b> ${esc(c.review_note)}</div>` : ''}
       </div>`).join('') : '<p class="muted">Not completed yet.</p>'}
@@ -408,10 +434,6 @@ async function viewTask(id) {
       store.set(chkKey, [...checked]);
     });
   });
-  if (t.lat != null) {
-    const { map } = makeMap($('#miniMap'), { center: [t.lat, t.lng], zoom: 16 });
-    L.circleMarker([t.lat, t.lng], { radius: 10, color: '#fff', weight: 3, fillColor: taskColor(t), fillOpacity: 1 }).addTo(map);
-  }
   $('#archiveBtn')?.addEventListener('click', guard(async () => {
     if (!confirm('Archive this task? Its history is kept.')) return;
     await api('DELETE', `/tasks/${t.id}`);
@@ -445,7 +467,7 @@ function presetFor(t) {
 }
 
 async function viewTaskForm(id, query) {
-  const [guides] = await Promise.all([api('GET', '/guides'), loadUsers()]);
+  const [guides, properties] = await Promise.all([api('GET', '/guides'), api('GET', '/properties'), loadUsers()]);
   let t = { title: '', description: '', priority: 'normal', recur_type: 'none', recur_interval: 1, recur_weekdays: '', due_date: S.today };
   if (id) t = await api('GET', `/tasks/${id}`);
   else if (query.get('copy')) {
@@ -453,6 +475,7 @@ async function viewTaskForm(id, query) {
     t = { ...src, title: src.title + ' (copy)', due_date: S.today };
   }
   if (query.get('guide')) t.guide_id = Number(query.get('guide'));
+  if (query.get('property')) t.property_id = Number(query.get('property'));
   const preset = presetFor(t);
   const wd = new Set((t.recur_weekdays || '').split(',').filter(Boolean));
   main.innerHTML = `
@@ -493,15 +516,14 @@ async function viewTaskForm(id, query) {
       </div>
       <p class="muted small" id="recurHelp"></p>
       <div class="field"><label>Estimated time (minutes)</label><input type="number" name="est_minutes" min="0" inputmode="numeric" value="${esc(t.est_minutes ?? '')}"></div>
-      <div class="field"><label>Location</label>
-        <input name="location_name" maxlength="120" value="${esc(t.location_name || '')}" placeholder="North pasture gate">
-        <input type="hidden" name="lat" value="${esc(t.lat ?? '')}"><input type="hidden" name="lng" value="${esc(t.lng ?? '')}">
-        <div class="row" style="margin-top:6px">
-          <button type="button" id="pickMap">📍 Pick on map</button>
-          <button type="button" id="useGps">Use my GPS</button>
-          <button type="button" class="link" id="clearLoc">Clear</button>
-        </div>
-        <p class="muted small" id="locText"></p></div>
+      <div class="field"><label>Property</label><select name="property_id" id="propSel">
+        <option value="">— none —</option>
+        ${properties.map((p) => `<option value="${p.id}" ${p.id === t.property_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+      </select>
+      ${properties.length ? '' : `<p class="muted small">${isOwner() ? 'Add properties and their aerial photos under the <a href="#/properties">Properties</a> tab.' : 'No properties have been added yet.'}</p>`}</div>
+      <div class="field"><label>Spot (optional)</label><input name="location_name" maxlength="120" value="${esc(t.location_name || '')}" placeholder="North pasture gate"></div>
+      <input type="hidden" name="pin_x" value="${esc(t.pin_x ?? '')}"><input type="hidden" name="pin_y" value="${esc(t.pin_y ?? '')}">
+      <div id="pinArea" class="field"></div>
       <button class="primary big" type="submit">${id ? 'Save changes' : 'Create task'}</button>
     </form>`;
   const form = $('#taskForm');
@@ -517,42 +539,30 @@ async function viewTaskForm(id, query) {
   form.recur_type.addEventListener('change', syncRecur);
   syncRecur();
 
-  const showLoc = () => {
-    $('#locText').textContent = form.lat.value ? `Pinned at ${Number(form.lat.value).toFixed(5)}, ${Number(form.lng.value).toFixed(5)}` : 'No map pin';
-  };
-  const setLoc = (lat, lng, name) => {
-    form.lat.value = lat ?? '';
-    form.lng.value = lng ?? '';
-    if (name && !form.location_name.value) form.location_name.value = name;
-    showLoc();
-  };
-  showLoc();
-  $('#useGps').addEventListener('click', guard(async () => {
-    const p = await getPosition();
-    if (!p) throw new Error('Could not get your location (check location permission)');
-    setLoc(p.lat, p.lng);
-  }));
-  $('#clearLoc').addEventListener('click', () => setLoc(null, null));
-  $('#pickMap').addEventListener('click', guard(async () => {
-    const layers = await api('GET', '/layers');
-    openModal(`<h2>Tap the map to set the spot</h2>
-      <p class="muted small">Tip: tap an imported onX waypoint to use it.</p>
-      <div class="picker-map" id="pickerMap"></div>
-      <div class="row" style="margin-top:10px"><button class="primary grow" id="pickOk">Use this spot</button><button data-close>Cancel</button></div>`);
-    let pick = form.lat.value ? { lat: Number(form.lat.value), lng: Number(form.lng.value), name: '' } : null;
-    const { map, base } = makeMap($('#pickerMap'), pick ? { center: [pick.lat, pick.lng], zoom: 16 } : {});
-    L.control.layers(base).addTo(map);
-    const marker = L.circleMarker([0, 0], { radius: 10, color: '#fff', weight: 3, fillColor: '#d32f2f', fillOpacity: 1 });
-    const place = (lat, lng, name = '') => { pick = { lat, lng, name }; marker.setLatLng([lat, lng]).addTo(map); };
-    if (pick) place(pick.lat, pick.lng);
-    layers.filter((l) => l.visible).forEach((l) => layerToLeaflet(l, place).addTo(map));
-    map.on('click', (e) => place(e.latlng.lat, e.latlng.lng));
-    setTimeout(() => map.invalidateSize(), 50);
-    $('#pickOk').addEventListener('click', () => {
-      if (pick) setLoc(Math.round(pick.lat * 1e6) / 1e6, Math.round(pick.lng * 1e6) / 1e6, pick.name);
-      closeModal();
+  // Property photo: tap to mark where the job is.
+  const paintPin = () => {
+    const p = properties.find((x) => x.id === Number(form.property_id.value));
+    const area = $('#pinArea');
+    if (!p) { area.innerHTML = ''; return; }
+    if (!p.has_photo) { area.innerHTML = '<p class="muted small">This property has no aerial photo yet.</p>'; return; }
+    const pin = form.pin_x.value !== '' ? [{ x: form.pin_x.value, y: form.pin_y.value, cls: 'mark' }] : [];
+    area.innerHTML = `<label>Mark the spot on the photo (optional)</label>
+      <p class="muted small" style="margin-top:0">Tap the photo where the job is.</p>
+      ${photoWithPins(p, pin, 'pinPhoto')}
+      ${pin.length ? '<button type="button" class="link" id="clearPin">Remove mark</button>' : ''}`;
+    $('#pinPhoto').addEventListener('click', (e) => {
+      const r = $('#pinPhoto img').getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width;
+      const y = (e.clientY - r.top) / r.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      form.pin_x.value = x.toFixed(4);
+      form.pin_y.value = y.toFixed(4);
+      paintPin();
     });
-  }));
+    $('#clearPin')?.addEventListener('click', () => { form.pin_x.value = form.pin_y.value = ''; paintPin(); });
+  };
+  form.property_id.addEventListener('change', () => { form.pin_x.value = form.pin_y.value = ''; paintPin(); });
+  paintPin();
 
   form.addEventListener('submit', guard(async (e) => {
     const d = formData(form);
@@ -649,94 +659,115 @@ async function viewGuideForm(id) {
   }));
 }
 
-// ----- Map -----
-async function viewMap() {
-  const [tasks, layers] = await Promise.all([api('GET', '/tasks'), api('GET', '/layers')]);
-  const pinned = tasks.filter((t) => t.lat != null);
-  main.innerHTML = `<div class="row between" style="margin-bottom:8px"><h1 style="margin:0">Map</h1>
-      <div class="row"><button id="locate">◎ Me</button><button id="importBtn">Import onX file</button></div></div>
-    <div id="map"></div>
-    <p class="small muted">● <span style="color:#d32f2f">overdue</span> · <span style="color:#f57c00">today</span> · <span style="color:#43a047">upcoming</span> · <span style="color:#1e88e5">anytime</span> — ${pinned.length} task(s) on map.
-      ${tasks.length - pinned.length ? `${tasks.length - pinned.length} task(s) have no pin.` : ''}</p>
-    <div class="card"><h2 style="margin-top:0">Imported layers</h2><div id="layerList"></div></div>
-    <input type="file" id="fileIn" accept=".kml,.gpx,.geojson,.json" hidden>`;
-  const { map, base } = makeMap($('#map'));
-  const overlays = {};
-  const bounds = [];
-  for (const l of layers) {
-    const ll = layerToLeaflet(l);
-    overlays[esc(l.name)] = ll;
-    if (l.visible) { ll.addTo(map); const b = ll.getBounds(); if (b.isValid()) bounds.push(b); }
-  }
-  const taskLayer = L.layerGroup().addTo(map);
-  for (const t of pinned) {
-    L.circleMarker([t.lat, t.lng], { radius: 10, color: '#fff', weight: 3, fillColor: taskColor(t), fillOpacity: 1 })
-      .bindPopup(`<a href="#/task/${t.id}">${esc(t.title)}</a><br>${t.due_date ? fmtDay(t.due_date) : 'Anytime'} · ${esc(t.assigned_name || 'Anyone')}
-        <br><a target="_blank" rel="noopener" href="${mapsLink(t.lat, t.lng)}">Directions</a>`)
-      .addTo(taskLayer);
-    bounds.push(L.latLngBounds([[t.lat, t.lng], [t.lat, t.lng]]));
-  }
-  overlays['Tasks'] = taskLayer;
-  L.control.layers(base, overlays).addTo(map);
-  if (bounds.length) map.fitBounds(bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast())), { padding: [30, 30], maxZoom: 17 });
-
-  let me;
-  $('#locate').addEventListener('click', guard(async () => {
-    const p = await getPosition();
-    if (!p) throw new Error('Could not get your location');
-    me = me || L.circleMarker([0, 0], { radius: 8, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(map);
-    me.setLatLng([p.lat, p.lng]);
-    map.setView([p.lat, p.lng], 16);
+// ----- Properties (aerial photos) -----
+function propertyModal(p, after) {
+  openModal(`<h2>${p ? 'Edit property' : 'Add property'}</h2><form id="propForm">
+    <div class="field"><label>Name</label><input name="name" required maxlength="80" value="${esc(p?.name || '')}" placeholder="Home place"></div>
+    <div class="field"><label>Notes (optional)</label><textarea name="notes" style="min-height:70px" maxlength="2000">${esc(p?.notes || '')}</textarea></div>
+    ${p ? '' : '<div class="field"><label>Aerial photo</label><input type="file" name="photo" accept="image/*"><p class="muted small">You can also add or replace it later.</p></div>'}
+    <div class="row"><button class="primary grow" type="submit">Save</button><button type="button" data-close>Cancel</button></div></form>`);
+  $('#propForm').addEventListener('submit', guard(async (e) => {
+    const f = e.target;
+    const d = { name: f.name.value, notes: f.notes.value };
+    let pid = p?.id;
+    if (p) await api('PUT', `/properties/${p.id}`, d);
+    else pid = (await api('POST', '/properties', d)).id;
+    const file = f.photo?.files[0];
+    if (file) {
+      toast('Uploading photo…');
+      await uploadPhoto(pid, file);
+    }
+    closeModal();
+    toast('Saved');
+    after(pid);
   }));
+}
 
-  $('#layerList').innerHTML = layers.length ? layers.map((l) => `<div class="row between" style="padding:6px 0">
-      <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${esc(l.color)}"></span> ${esc(l.name)}
-      <span class="muted small">(${l.geojson.features.length} items${l.visible ? '' : ', hidden by default'})</span></span>
-      ${isOwner() ? `<span><button class="link" data-lvis="${l.id}">${l.visible ? 'Hide' : 'Show'}</button><button class="link" data-ldel="${l.id}" style="color:var(--danger)">Delete</button></span>` : ''}
-    </div>`).join('') : `<p class="muted small">No layers yet. In onX, open <b>Markups</b> (waypoints, lines, areas), select what you want,
-      choose <b>Export</b> → <b>KML</b> or <b>GPX</b>, then tap <b>Import onX file</b> here. Property lines, gates, water tanks and pasture boundaries all work.</p>`;
-  $$('[data-ldel]').forEach((b) => b.addEventListener('click', guard(async () => {
-    if (!confirm('Delete this layer?')) return;
-    await api('DELETE', `/layers/${b.dataset.ldel}`);
-    render();
-  })));
-  $$('[data-lvis]').forEach((b) => b.addEventListener('click', guard(async () => {
-    const l = layers.find((x) => x.id === Number(b.dataset.lvis));
-    await api('PUT', `/layers/${l.id}`, { name: l.name, color: l.color, visible: !l.visible });
-    render();
-  })));
+async function viewProperties() {
+  const props = await api('GET', '/properties');
+  main.innerHTML = `<div class="row between"><h1>Properties</h1>
+      ${isOwner() ? '<button class="primary" id="addProp">+ Add property</button>' : ''}</div>
+    <p class="muted">Pick a property on a task and its aerial photo is shown with the task, with the spot marked.</p>
+    ${props.map((p) => `<a class="list-link" href="#/property/${p.id}"><div class="card prop-card">
+      ${p.has_photo ? `<img class="thumb" src="${photoUrl(p)}" alt="" loading="lazy">` : '<div class="thumb empty-thumb">No photo yet</div>'}
+      <div><b>${esc(p.name)}</b><div class="small muted">${p.open_tasks} open task(s)</div></div></div></a>`).join('')
+      || `<div class="empty card">${isOwner() ? 'No properties yet. Tap <b>+ Add property</b> and upload an aerial photo of each one.' : 'No properties have been added yet.'}</div>`}`;
+  $('#addProp')?.addEventListener('click', () => propertyModal(null, (pid) => (location.hash = `#/property/${pid}`)));
+}
 
-  $('#importBtn').addEventListener('click', () => $('#fileIn').click());
-  $('#fileIn').addEventListener('change', guard(async (e) => {
+async function viewProperty(id) {
+  const p = await api('GET', `/properties/${id}`);
+  const pinned = p.tasks.filter((t) => t.pin_x != null);
+  main.innerHTML = `<p><a href="#/properties">← Properties</a></p>
+    <div class="row between"><h1 style="margin:0">${esc(p.name)}</h1>
+      <a class="btn primary" href="#/task/new?property=${p.id}">+ Task here</a></div>
+    ${p.notes ? `<p class="desc">${esc(p.notes)}</p>` : ''}
+    <div class="card" style="margin-top:12px">
+      ${p.has_photo ? `${photoWithPins(p, pinned.map((t, i) => ({ x: t.pin_x, y: t.pin_y, label: i + 1, cls: pinClass(t), href: `#/task/${t.id}`, title: t.title })))}
+        <p class="small muted" style="margin-bottom:0"><span class="dot late"></span> overdue · <span class="dot today"></span> today ·
+          <span class="dot soon"></span> upcoming · <span class="dot anytime"></span> anytime ·
+          <a href="${photoUrl(p)}" target="_blank" rel="noopener">Full-size photo</a></p>`
+        : `<div class="empty">No aerial photo yet.${isOwner() ? ' Tap <b>Upload photo</b> below.' : ''}</div>`}
+    </div>
+    <h2>Open tasks</h2>
+    ${p.tasks.map((t) => {
+      const n = pinned.indexOf(t);
+      return `<a class="list-link" href="#/task/${t.id}"><div class="card row">
+        ${n >= 0 ? `<span class="pin static ${pinClass(t)}">${n + 1}</span>` : ''}
+        <div class="grow"><b>${esc(t.title)}</b><div class="small muted">${t.due_date ? fmtDay(t.due_date) : 'Anytime'} · ${esc(t.assigned_name || 'Anyone')}${t.location_name ? ' · ' + esc(t.location_name) : ''}</div></div></div></a>`;
+    }).join('') || '<p class="muted">No open tasks at this property.</p>'}
+    ${isOwner() ? `<div class="row" style="margin-top:12px">
+      <button id="photoBtn">${p.has_photo ? 'Replace photo' : 'Upload photo'}</button>
+      <button id="editProp">Edit</button><button class="danger" id="delProp">Delete</button></div>
+      <input type="file" id="photoIn" accept="image/*" hidden>` : ''}`;
+  if (!isOwner()) return;
+  $('#photoBtn').addEventListener('click', () => $('#photoIn').click());
+  $('#photoIn').addEventListener('change', guard(async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const gj = await fileToGeoJSON(file);
-    openModal(`<h2>Import ${esc(file.name)}</h2><p>${gj.features.length} item(s) found.</p>
-      <form id="layerForm"><div class="field"><label>Layer name</label><input name="name" required value="${esc(file.name.replace(/\.\w+$/, ''))}"></div>
-      <div class="field"><label>Color</label><input type="color" name="color" value="#ff7800"></div>
-      <div class="row"><button class="primary grow" type="submit">Import</button><button type="button" data-close>Cancel</button></div></form>`);
-    $('#layerForm').addEventListener('submit', guard(async (ev) => {
-      await api('POST', '/layers', { ...formData(ev.target), geojson: gj });
-      closeModal();
-      toast('Layer imported');
-      render();
-    }));
-    e.target.value = '';
+    toast('Uploading photo…');
+    await uploadPhoto(p.id, file);
+    toast('Photo saved');
+    render();
+  }));
+  $('#editProp').addEventListener('click', () => propertyModal(p, render));
+  $('#delProp').addEventListener('click', guard(async () => {
+    if (!confirm(`Delete ${p.name}? Its tasks stay, just without a property.`)) return;
+    await api('DELETE', `/properties/${p.id}`);
+    location.hash = '#/properties';
   }));
 }
 
 // ----- Time -----
+const EDIT_KIND = { add: 'Added punch', edit: 'Changed times', delete: 'Deleted punch', auto_clockout: 'Auto clock-out (14 hrs)', confirm: 'Confirmed auto clock-out' };
+function editLine(x, showWho) {
+  const span = (a, b) => `${a ? fmtDateTime(a) : '—'} → ${b ? fmtDateTime(b) : 'on clock'}`;
+  const before = x.old_in ? span(x.old_in, x.old_out) : '';
+  const after = x.new_in ? span(x.new_in, x.new_out) : '';
+  return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    <div class="row between"><b>${showWho ? esc(x.employee_name) + ' · ' : ''}${EDIT_KIND[x.kind] || esc(x.kind)}</b>
+      <span class="small muted">${fmtDateTime(x.created_at)}</span></div>
+    <div class="small">${before ? `<span class="muted">Was:</span> ${before}<br>` : ''}${after ? `<span class="muted">Now:</span> ${after}` : ''}</div>
+    <div class="small muted">By ${x.editor_name ? esc(x.editor_name) : 'the system'}${x.reason ? ` — “${esc(x.reason)}”` : ''}</div></div>`;
+}
+function punchTags(e) {
+  return [e.auto_closed ? `<span class="tag pending">${e.needs_review ? 'Auto clock-out · not confirmed' : 'Auto clock-out'}</span>` : '',
+    e.edited ? `<span class="tag flagged">Edited${e.edited_by_name ? ' by ' + esc(e.edited_by_name) : ''}</span>` : ''].join(' ');
+}
+
 async function viewTime(query) {
-  const rk = query.get('range') || 'week';
-  const r = ranges()[rk] || ranges().week;
+  const rk = query.get('range') || 'period';
+  const r = ranges()[rk] || ranges().period;
   if (isOwner()) await loadUsers();
-  const [entries, payroll] = await Promise.all([
+  const [entries, payroll, edits] = await Promise.all([
     api('GET', `/time?from=${r.from}&to=${r.to}`),
     isOwner() ? api('GET', `/payroll?from=${r.from}&to=${r.to}`) : null,
+    api('GET', `/time/edits?from=${r.from}&to=${r.to}`),
     refreshClock(),
   ]);
-  const myTotal = entries.filter((e) => e.user_id === S.user.id)
-    .reduce((s, e) => s + ((e.clock_out ? new Date(e.clock_out) : new Date()) - new Date(e.clock_in)) / 3600000, 0);
+  const hoursOf = (e) => ((e.clock_out ? new Date(e.clock_out) : new Date()) - new Date(e.clock_in)) / 3600000;
+  const myTotal = entries.filter((e) => e.user_id === S.user.id).reduce((s, e) => s + hoursOf(e), 0);
+  const canEdit = (e) => isOwner() || e.user_id === S.user.id;
   main.innerHTML = `
     <div class="card clock-card" id="clockCard">${clockCardInner()}</div>
     <h1>${isOwner() ? 'Time &amp; payroll' : 'My time'}</h1>
@@ -746,25 +777,30 @@ async function viewTime(query) {
       <div class="row between"><h2 style="margin:0">Payroll summary</h2>
         <div class="row"><a class="btn" href="/api/payroll.csv?from=${r.from}&to=${r.to}">⬇ CSV</a>
         ${S.emailEnabled ? '<button class="primary" id="emailPayroll">✉ Email to payroll</button>' : ''}</div></div>
-      ${payroll.openEntries ? `<p class="warn">${payroll.openEntries} person(s) still clocked in — their hours count up to now.</p>` : ''}
-      <div class="table-wrap"><table><thead><tr><th>Employee</th><th class="num">Regular</th><th class="num">Overtime</th><th class="num">Total</th></tr></thead><tbody>
-      ${payroll.summary.map((s) => `<tr><td>${esc(s.name)}${s.open ? ' <span class="tag pending">on clock</span>' : ''}</td><td class="num">${hrs(s.regular)}</td><td class="num">${hrs(s.overtime)}</td><td class="num"><b>${hrs(s.total)}</b></td></tr>`).join('')
+      ${payroll.openEntries ? `<p class="warn">${payroll.openEntries} person(s) still clocked in. Their hours count up to now.</p>` : ''}
+      <div class="table-wrap"><table><thead><tr><th>Employee</th><th class="num">Hours</th><th class="num">Changed by hand</th><th class="num">Auto clock-outs</th></tr></thead><tbody>
+      ${payroll.summary.map((s) => `<tr><td>${esc(s.name)}${s.open ? ' <span class="tag pending">on clock</span>' : ''}</td>
+        <td class="num"><b>${hrs(s.total)}</b></td><td class="num">${s.edited || '—'}</td>
+        <td class="num">${s.auto ? s.auto + (s.unconfirmed ? ` (${s.unconfirmed} not confirmed)` : '') : '—'}</td></tr>`).join('')
         || '<tr><td colspan="4" class="muted">No hours in this range.</td></tr>'}
       </tbody></table></div>
-      <p class="muted small">Overtime = hours over ${esc(S.settings.overtime_hours)}/week (week starts ${S.settings.week_start === '1' ? 'Monday' : 'Sunday'}).
-        ${S.emailEnabled ? (S.settings.payroll_email ? `Emails go to ${esc(S.settings.payroll_email)}.` : 'Set the payroll email in Settings.') : 'Download the CSV and upload/forward it to payroll, or set up email (see README).'}</p>
+      <p class="muted small">Pay periods run the 1st–15th and the 16th–end of the month.
+        ${S.emailEnabled ? (S.settings.payroll_email ? `Emails go to ${esc(S.settings.payroll_email)}.` : 'Set the payroll email in Settings.') : 'Download the CSV and send it to payroll, or set up email (see README).'}</p>
     </div>` : `<div class="card"><b>${hrs(myTotal)} hrs</b> in this range</div>`}
-    <div class="section-title"><h2>${isOwner() ? 'All punches' : 'My punches'}</h2>
-      ${isOwner() ? '<button id="addPunch">+ Add missed punch</button>' : ''}</div>
-    <div class="card table-wrap"><table><thead><tr>${isOwner() ? '<th>Who</th>' : ''}<th>Date</th><th>In</th><th>Out</th><th class="num">Hrs</th>${isOwner() ? '<th></th>' : ''}</tr></thead><tbody>
+    <div class="section-title"><h2>${isOwner() ? 'All punches' : 'My punches'}</h2><button id="addPunch">+ Add missed punch</button></div>
+    <div class="card table-wrap"><table><thead><tr>${isOwner() ? '<th>Who</th>' : ''}<th>Date</th><th>In</th><th>Out</th><th class="num">Hrs</th><th></th></tr></thead><tbody>
       ${entries.map((e) => {
-        const h = ((e.clock_out ? new Date(e.clock_out) : new Date()) - new Date(e.clock_in)) / 3600000;
+        const tags = punchTags(e);
         return `<tr>${isOwner() ? `<td>${esc(e.name)}</td>` : ''}<td>${fmtDay(e.work_date)}</td><td>${fmtTime(e.clock_in)}</td>
-          <td>${e.clock_out ? fmtTime(e.clock_out) : '<span class="tag pending">on clock</span>'}</td><td class="num">${hrs(h)}</td>
-          ${isOwner() ? `<td><button class="link" data-edit="${e.id}">Edit</button></td>` : ''}</tr>
-          ${e.note || e.edited_by_name ? `<tr><td colspan="${isOwner() ? 6 : 4}" class="small muted" style="border-top:none;padding-top:0">${esc(e.note)}${e.edited_by_name ? ` (edited by ${esc(e.edited_by_name)})` : ''}</td></tr>` : ''}`;
-      }).join('') || `<tr><td colspan="6" class="muted">No punches.</td></tr>`}
-    </tbody></table></div>`;
+          <td>${e.clock_out ? fmtTime(e.clock_out) : '<span class="tag pending">on clock</span>'}</td><td class="num">${hrs(hoursOf(e))}</td>
+          <td class="right">${canEdit(e) ? `<button class="link" data-edit="${e.id}">Edit</button>` : ''}</td></tr>
+          ${tags || e.note ? `<tr><td colspan="${isOwner() ? 6 : 5}" class="small" style="border-top:none;padding-top:0">${tags}
+            ${e.note ? `<span class="muted">${esc(e.note)}</span>` : ''}
+            ${tags ? `<button class="link small" data-hist="${e.id}">History</button>` : ''}</td></tr>` : ''}`;
+      }).join('') || '<tr><td colspan="6" class="muted">No punches.</td></tr>'}
+    </tbody></table></div>
+    <div class="section-title"><h2>Change log</h2><span class="muted small">${edits.length}</span></div>
+    <div class="card">${edits.map((x) => editLine(x, isOwner())).join('') || '<p class="muted" style="margin:0">No manual changes in this range.</p>'}</div>`;
   $$('[data-range]').forEach((b) => b.addEventListener('click', () => (location.hash = `#/time?range=${b.dataset.range}`)));
   $('#emailPayroll')?.addEventListener('click', guard(async () => {
     if (!confirm(`Email payroll for ${r.from} to ${r.to}?`)) return;
@@ -772,30 +808,37 @@ async function viewTime(query) {
     toast(`Sent to ${res.sentTo}`);
   }));
   const punchModal = (e) => {
-    openModal(`<h2>${e ? 'Edit punch' : 'Add missed punch'}</h2><form id="punchForm">
-      <div class="field"><label>Employee</label><select name="user_id" ${e ? 'disabled' : 'required'}>${userOptions(e?.user_id, { blank: '— pick —' })}</select></div>
+    openModal(`<h2>${e ? 'Change punch' : 'Add missed punch'}</h2><form id="punchForm">
+      ${isOwner() ? `<div class="field"><label>Employee</label><select name="user_id" ${e ? 'disabled' : 'required'}>${userOptions(e?.user_id, { blank: '— pick —' })}</select></div>` : ''}
       <div class="field"><label>Clock in</label><input type="datetime-local" name="clock_in" required value="${toLocalInput(e?.clock_in)}"></div>
-      <div class="field"><label>Clock out</label><input type="datetime-local" name="clock_out" value="${toLocalInput(e?.clock_out)}"></div>
-      <div class="field"><label>Note</label><input name="note" value="${esc(e?.note || '')}" placeholder="Reason for change"></div>
-      <div class="row"><button class="primary grow" type="submit">Save</button>${e ? '<button type="button" class="danger" id="delPunch">Delete</button>' : ''}<button type="button" data-close>Cancel</button></div></form>`);
+      <div class="field"><label>Clock out</label><input type="datetime-local" name="clock_out" ${e && !e.clock_out ? '' : 'required'} value="${toLocalInput(e?.clock_out)}"></div>
+      <div class="field"><label>Reason${isOwner() ? ' (optional)' : ''}</label><input name="reason" maxlength="500" ${isOwner() ? '' : 'required'} placeholder="Forgot to clock in this morning"></div>
+      <p class="muted small">${isOwner() ? 'Changes are kept in the change log.' : 'The owner can see every change you make.'}</p>
+      <div class="row"><button class="primary grow" type="submit">Save</button>
+        ${e && isOwner() ? '<button type="button" class="danger" id="delPunch">Delete</button>' : ''}<button type="button" data-close>Cancel</button></div></form>`);
     $('#punchForm').addEventListener('submit', guard(async (ev) => {
       const d = formData(ev.target);
       const body = { ...d, clock_in: fromLocalInput(d.clock_in), clock_out: fromLocalInput(d.clock_out) };
       e ? await api('PUT', `/time/${e.id}`, body) : await api('POST', '/time', body);
       closeModal();
       toast('Saved');
-      refreshClock();
+      await refreshClock();
       render();
     }));
     $('#delPunch')?.addEventListener('click', guard(async () => {
-      if (!confirm('Delete this punch?')) return;
+      if (!confirm('Delete this punch? It stays in the change log.')) return;
       await api('DELETE', `/time/${e.id}`);
       closeModal();
       render();
     }));
   };
-  $('#addPunch')?.addEventListener('click', () => punchModal(null));
+  $('#addPunch').addEventListener('click', () => punchModal(null));
   $$('[data-edit]').forEach((b) => b.addEventListener('click', () => punchModal(entries.find((x) => x.id === Number(b.dataset.edit)))));
+  $$('[data-hist]').forEach((b) => b.addEventListener('click', guard(async () => {
+    const list = await api('GET', `/time/edits?entry_id=${b.dataset.hist}`);
+    openModal(`<h2>Punch history</h2>${list.map((x) => editLine(x, false)).join('') || '<p class="muted">No changes.</p>'}
+      <div class="row" style="margin-top:12px"><button data-close class="grow">Close</button></div>`);
+  })));
 }
 
 // ----- More / review / team / settings -----
@@ -822,14 +865,13 @@ async function viewReview(query) {
     <div class="chips">${['pending', 'flagged', 'approved'].map((s) => `<button class="chip ${s === st ? 'on' : ''}" data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>
     ${list.map((c) => `<div class="card">
       <div class="row between"><a href="#/task/${c.task_id}"><b>${esc(c.task_title)}</b></a><span class="tag ${c.review_status}">${c.review_status}</span></div>
-      <div class="small muted">${esc(c.user_name)} · ${fmtDateTime(c.completed_at)}${c.minutes_spent != null ? ` · ${c.minutes_spent} min` : ''}
+      <div class="small muted">${esc(c.user_name)} · ${fmtDateTime(c.completed_at)}
         ${c.due_date ? ` · due ${fmtDay(c.due_date)}` : ''} ${c.due_date && c.completed_on > c.due_date ? '<span class="tag late">late</span>' : ''}</div>
       ${c.notes ? `<p class="desc">${esc(c.notes)}</p>` : ''}
       ${c.review_note ? `<p class="small"><b>Review note:</b> ${esc(c.review_note)}</p>` : ''}
       <div class="row">
         ${c.review_status !== 'approved' ? `<button class="ok" data-approve="${c.id}">✓ Approve</button>` : ''}
         ${c.review_status !== 'flagged' ? `<button class="danger" data-flag="${c.id}">⚑ Flag</button>` : ''}
-        ${c.lat != null ? `<a class="btn" target="_blank" rel="noopener" href="${mapsLink(c.lat, c.lng)}">📍</a>` : ''}
       </div></div>`).join('') || `<div class="empty card">Nothing ${st}.</div>`}`;
   $$('[data-s]').forEach((b) => b.addEventListener('click', () => (location.hash = `#/review?s=${b.dataset.s}`)));
   $$('[data-approve]').forEach((b) => b.addEventListener('click', guard(async () => {
@@ -859,35 +901,36 @@ async function viewReview(query) {
 }
 
 async function viewTeam(query) {
-  const rk = query.get('range') || 'two';
-  const r = ranges()[rk] || ranges().two;
+  const rk = query.get('range') || 'period';
+  const r = ranges()[rk] || ranges().period;
   const [stats] = await Promise.all([api('GET', `/stats?from=${r.from}&to=${r.to}`), isOwner() ? loadUsers() : null]);
   const pct = (x) => (x == null ? '—' : Math.round(x * 100) + '%');
   main.innerHTML = `<p><a href="#/more">← More</a></p><h1>${isOwner() ? 'Team productivity' : 'My productivity'}</h1>
     ${rangeChips(rk)}
     <p class="muted small">${fmtDay(r.from)} – ${fmtDay(r.to)}</p>
     <div class="card table-wrap"><table><thead><tr><th>Name</th><th class="num">Hours</th><th class="num">Tasks done</th>
-      <th class="num">Tasks/day</th><th class="num">Task time</th><th class="num">On time</th><th class="num">Flagged</th></tr></thead><tbody>
+      <th class="num">Tasks/day</th><th class="num">On time</th><th class="num">Flagged</th><th class="num">Time changes</th></tr></thead><tbody>
       ${stats.rows.map((x) => `<tr><td>${esc(x.name)}</td><td class="num">${hrs(x.hours)}</td><td class="num"><b>${x.completed}</b></td>
         <td class="num">${x.tasks_per_day.toFixed(1)}</td>
-        <td class="num" title="Logged task minutes as a share of hours on the clock">${pct(x.utilization)}</td>
         <td class="num">${x.completed ? pct(x.on_time / x.completed) : '—'}</td>
-        <td class="num">${x.flagged || 0}</td></tr>`).join('')}
+        <td class="num">${x.flagged || 0}</td>
+        <td class="num">${x.time_changes + x.auto_clockouts || 0}</td></tr>`).join('')}
     </tbody></table></div>
-    <p class="muted small"><b>Task time</b> = minutes logged on completed tasks ÷ hours on the clock.
-      <b>On time</b> = finished on or before the due date. <b>Flagged</b> = work the owner sent back.</p>
+    <p class="muted small"><b>On time</b> = finished on or before the due date. <b>Flagged</b> = work the owner sent back.
+      <b>Time changes</b> = punches changed by hand or auto clocked out (see the Time tab's change log).</p>
     ${isOwner() ? `<div class="section-title"><h2>People</h2><button id="addUser">+ Add person</button></div>
       <div class="card">${S.users.map((u) => `<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line)">
         <span><b>${esc(u.name)}</b> <span class="muted small">@${esc(u.username)}</span> <span class="tag">${u.role}</span>
           ${u.active ? '' : '<span class="tag">inactive</span>'}</span>
-        <button class="link" data-user="${u.id}">Edit</button></div>`).join('')}</div>` : ''}`;
+        <button class="link" data-user="${u.id}">Edit</button></div>`).join('')}</div>
+      <p class="muted small">Passwords are stored scrambled and can't be shown. To give someone a new one, tap <b>Edit</b> and type a new password or PIN.</p>` : ''}`;
   $$('[data-range]').forEach((b) => b.addEventListener('click', () => (location.hash = `#/team?range=${b.dataset.range}`)));
   const userModal = (u) => {
     openModal(`<h2>${u ? 'Edit ' + esc(u.name) : 'Add person'}</h2><form id="userForm">
       <div class="field"><label>Name</label><input name="name" required value="${esc(u?.name || '')}"></div>
       ${u ? '' : '<div class="field"><label>Username</label><input name="username" required autocapitalize="none"></div>'}
       <div class="field"><label>Role</label><select name="role"><option value="hand">Hand</option><option value="owner" ${u?.role === 'owner' ? 'selected' : ''}>Owner</option></select></div>
-      <div class="field"><label>${u ? 'Reset password / PIN (leave blank to keep)' : 'Password or PIN (4+ characters)'}</label>
+      <div class="field"><label>${u ? 'Set a new password / PIN (leave blank to keep the current one)' : 'Password or PIN (4+ characters)'}</label>
         <input name="password" type="text" autocomplete="off" ${u ? '' : 'required minlength="4"'}></div>
       ${u ? `<label class="inline-check"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Active (can log in)</label>` : ''}
       <div class="row" style="margin-top:12px"><button class="primary grow" type="submit">Save</button><button type="button" data-close>Cancel</button></div></form>`);
@@ -896,7 +939,7 @@ async function viewTeam(query) {
       if (u) await api('PUT', `/users/${u.id}`, { ...d, active: Boolean(d.active) });
       else await api('POST', '/users', d);
       closeModal();
-      toast('Saved');
+      toast(d.password ? `Saved. Their password/PIN is now: ${d.password}` : 'Saved');
       render();
     }));
   };
@@ -913,31 +956,14 @@ function viewSettings() {
       <div class="field"><label>Ranch name</label><input name="ranch_name" required value="${esc(s.ranch_name)}"></div>
       <div class="field"><label>Time zone</label><select name="timezone">${zones.map((z) => `<option ${z === s.timezone ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select></div>
       <h2>Payroll</h2>
-      <div class="grid2">
-        <div class="field"><label>Pay week starts</label><select name="week_start"><option value="0">Sunday</option><option value="1" ${s.week_start === '1' ? 'selected' : ''}>Monday</option></select></div>
-        <div class="field"><label>Overtime after (hrs/week)</label><input type="number" name="overtime_hours" min="1" max="168" value="${esc(s.overtime_hours)}"></div>
-      </div>
+      <p class="muted small">Pay periods run the 1st–15th and the 16th–end of each month. Anyone still on the clock after 14 hours is clocked out automatically and asked to fix it next time they open the app.</p>
       <div class="field"><label>Payroll email (where reports go)</label><input type="email" name="payroll_email" value="${esc(s.payroll_email)}" placeholder="payroll@example.com"></div>
       <label class="inline-check"><input type="checkbox" name="payroll_auto_email" value="1" ${s.payroll_auto_email === '1' ? 'checked' : ''} ${S.emailEnabled ? '' : 'disabled'}>
-        Auto-email last week's payroll every Monday morning</label>
-      ${S.emailEnabled ? '' : '<p class="muted small">Email sending isn\'t set up on the server yet — see README "Emailing payroll". You can still download the CSV from the Time tab.</p>'}
-      <h2>Map</h2>
-      <p class="muted small">Where the map opens when there are no pins yet.</p>
-      <div class="grid2">
-        <div class="field"><label>Latitude</label><input name="map_lat" value="${esc(s.map_lat)}"></div>
-        <div class="field"><label>Longitude</label><input name="map_lng" value="${esc(s.map_lng)}"></div>
-      </div>
-      <div class="field"><label>Zoom (1–20)</label><input type="number" name="map_zoom" min="1" max="20" value="${esc(s.map_zoom)}"></div>
-      <button type="button" id="hereBtn" style="margin-bottom:12px">Use my current location</button>
-      <button class="primary big" type="submit">Save settings</button>
+        Email the pay period that just ended on the 1st and 16th (8 am)</label>
+      ${S.emailEnabled ? '' : '<p class="muted small">Email sending isn\'t set up on the server yet. See README "Emailing payroll". You can still download the CSV from the Time tab.</p>'}
+      <button class="primary big" type="submit" style="margin-top:16px">Save settings</button>
     </form>`;
   const f = $('#setForm');
-  $('#hereBtn').addEventListener('click', guard(async () => {
-    const p = await getPosition();
-    if (!p) throw new Error('Could not get your location');
-    f.map_lat.value = p.lat.toFixed(6);
-    f.map_lng.value = p.lng.toFixed(6);
-  }));
   f.addEventListener('submit', guard(async () => {
     const d = formData(f);
     d.payroll_auto_email = d.payroll_auto_email === '1';
@@ -977,7 +1003,8 @@ const ROUTES = [
   [/^\/guide\/new$/, () => viewGuideForm(null), 'guides'],
   [/^\/guide\/(\d+)$/, (m) => viewGuide(m[1]), 'guides'],
   [/^\/guide\/(\d+)\/edit$/, (m) => viewGuideForm(m[1]), 'guides'],
-  [/^\/map$/, viewMap, 'map'],
+  [/^\/properties$/, viewProperties, 'props'],
+  [/^\/property\/(\d+)$/, (m) => viewProperty(m[1]), 'props'],
   [/^\/time$/, (m, q) => viewTime(q), 'time'],
   [/^\/more$/, viewMore, 'more'],
   [/^\/review$/, (m, q) => viewReview(q), 'more'],
