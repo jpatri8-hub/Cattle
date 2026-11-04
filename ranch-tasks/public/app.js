@@ -127,16 +127,115 @@ function pinClass(t) {
   if (t.due_date === S.today) return 'today';
   return 'soon';
 }
-// pins: [{ x, y, label, cls, href, title }] with x/y as 0..1 fractions of the photo.
-function photoWithPins(p, pins = [], id = '') {
+// Marks on a property photo: [{ type: 'pin', x, y } | { type: 'line', points: [[x, y], ...] }],
+// with x/y as 0..1 fractions of the photo's width and height.
+function parseMarks(m) {
+  if (!m) return [];
+  if (Array.isArray(m)) return m;
+  try { return JSON.parse(m) || []; } catch { return []; }
+}
+function pinEl(x, y, g) {
+  const style = `left:${Number(x) * 100}%;top:${Number(y) * 100}%`;
+  const attrs = `class="pin ${g.cls || 'mark'}" style="${style}" title="${esc(g.title || '')}"`;
+  return g.href ? `<a ${attrs} href="${g.href}">${esc(g.label ?? '')}</a>` : `<span ${attrs}>${esc(g.label ?? '')}</span>`;
+}
+// groups: [{ marks, cls, label, href, title }], one per task.
+function marksOverlay(groups) {
+  const lines = [];
+  const pins = [];
+  for (const g of groups) {
+    const ms = parseMarks(g.marks);
+    for (const m of ms) {
+      if (m.type !== 'line') continue;
+      const pts = m.points.map(([x, y]) => `${Number(x) * 1000},${Number(y) * 1000}`).join(' ');
+      lines.push(`<polyline class="halo" points="${pts}"/><polyline class="stroke-${g.cls || 'mark'}" points="${pts}"/>`);
+    }
+    const spots = ms.filter((m) => m.type === 'pin');
+    spots.forEach((m) => pins.push(pinEl(m.x, m.y, g)));
+    // A task with only lines still gets its number, at the start of its first line.
+    const firstLine = ms.find((m) => m.type === 'line');
+    if (!spots.length && firstLine && g.label != null) pins.push(pinEl(firstLine.points[0][0], firstLine.points[0][1], g));
+  }
+  return `<svg class="marks" viewBox="0 0 1000 1000" preserveAspectRatio="none">${lines.join('')}</svg>${pins.join('')}`;
+}
+function photoWithMarks(p, groups = [], id = '') {
   return `<div class="photo-wrap" ${id ? `id="${id}"` : ''}>
     <img src="${photoUrl(p)}" alt="Aerial photo of ${esc(p.name)}" draggable="false">
-    ${pins.map((pin) => {
-      const style = `left:${Number(pin.x) * 100}%;top:${Number(pin.y) * 100}%`;
-      const attrs = `class="pin ${pin.cls || ''}" style="${style}" title="${esc(pin.title || '')}"`;
-      return pin.href ? `<a ${attrs} href="${pin.href}">${esc(pin.label ?? '')}</a>` : `<span ${attrs}>${esc(pin.label ?? '')}</span>`;
-    }).join('')}
+    <div class="overlay">${marksOverlay(groups)}</div>
   </div>`;
+}
+
+// Owner's editor: tap to drop spots, or drag to draw lines. Writes JSON into `input`.
+function markEditor(area, p, input) {
+  let marks = parseMarks(input.value);
+  let mode = 'pin';
+  let cur = null;
+  area.innerHTML = `<label>Mark spots or draw lines on the photo (optional)</label>
+    <div class="chips" style="margin:6px 0">
+      <button type="button" class="chip" data-mode="pin">📍 Spot</button>
+      <button type="button" class="chip" data-mode="line">✏️ Line</button>
+      <button type="button" class="chip" id="undoMark">↶ Undo</button>
+      <button type="button" class="chip" id="clearMarks">Clear</button>
+    </div>
+    <p class="muted small" id="markHint" style="margin-top:0"></p>
+    ${photoWithMarks(p, [], 'markPhoto')}`;
+  const wrap = $('#markPhoto', area);
+  const overlay = $('.overlay', wrap);
+  const img = $('img', wrap);
+  const paint = (extra) => { overlay.innerHTML = marksOverlay([{ marks: extra ? [...marks, extra] : marks, cls: 'mark' }]); };
+  const save = () => { input.value = marks.length ? JSON.stringify(marks) : ''; paint(); };
+  const setMode = (m) => {
+    mode = m;
+    $$('[data-mode]', area).forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    wrap.classList.toggle('drawing', m === 'line');
+    $('#markHint', area).textContent = m === 'pin'
+      ? 'Tap the photo to drop a spot. Add as many as you need.'
+      : 'Drag your finger across the photo to draw a line (fence, route, ditch…).';
+  };
+  const pos = (e) => {
+    const r = img.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+  };
+  const inside = ([x, y]) => x >= 0 && x <= 1 && y >= 0 && y <= 1;
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  const tooMany = () => { if (marks.length < 50) return false; toast('That is the most marks one task can have (50)', true); return true; };
+  wrap.addEventListener('pointerdown', (e) => {
+    if (mode !== 'line') return;
+    const pt = pos(e);
+    if (!inside(pt) || tooMany()) return;
+    e.preventDefault();
+    wrap.setPointerCapture(e.pointerId);
+    cur = [pt];
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (!cur) return;
+    const [x, y] = pos(e);
+    const pt = [clamp(x), clamp(y)];
+    const last = cur[cur.length - 1];
+    if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) < 0.006 || cur.length >= 500) return;
+    cur.push(pt);
+    paint({ type: 'line', points: cur });
+  });
+  const endLine = () => {
+    if (!cur) return;
+    if (cur.length >= 2) marks.push({ type: 'line', points: cur });
+    cur = null;
+    save();
+  };
+  wrap.addEventListener('pointerup', endLine);
+  wrap.addEventListener('pointercancel', endLine);
+  wrap.addEventListener('click', (e) => {
+    if (mode !== 'pin') return;
+    const pt = pos(e);
+    if (!inside(pt) || tooMany()) return;
+    marks.push({ type: 'pin', x: pt[0], y: pt[1] });
+    save();
+  });
+  $$('[data-mode]', area).forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  $('#undoMark', area).addEventListener('click', () => { marks.pop(); save(); });
+  $('#clearMarks', area).addEventListener('click', () => { if (marks.length && confirm('Remove all marks?')) { marks = []; save(); } });
+  setMode('pin');
+  save();
 }
 
 // Shrink an aerial photo in the browser so it fits in the database (< ~1.8 MB).
@@ -338,7 +437,8 @@ function taskRow(t) {
 }
 
 async function viewTasks() {
-  const filter = store.get('taskFilter', isOwner() ? 'all' : 'mine');
+  // Hands only receive unassigned tasks and their own from the server.
+  const filter = isOwner() ? store.get('taskFilter', 'all') : 'all';
   const [tasks, doneToday] = await Promise.all([
     api('GET', '/tasks'),
     api('GET', `/completions?from=${S.today}&to=${S.today}`),
@@ -356,10 +456,10 @@ async function viewTasks() {
   main.innerHTML = `
     <div class="card clock-card" id="clockCard">${clockCardInner()}</div>
     <div class="row between">
-      <div class="chips" style="margin:0">
+      ${isOwner() ? `<div class="chips" style="margin:0">
         <button class="chip ${filter === 'mine' ? 'on' : ''}" data-filter="mine">Mine + unassigned</button>
         <button class="chip ${filter === 'all' ? 'on' : ''}" data-filter="all">Everyone</button>
-      </div>
+      </div>` : '<span></span>'}
       <a class="btn primary" href="#/task/new">+ New task</a>
     </div>
     ${groups.map(([title, list, cls]) => {
@@ -403,7 +503,7 @@ async function viewTask(id) {
     ${prop || t.location_name ? `<div class="card"><div class="row between"><h2 style="margin:0">📍 ${esc(prop ? prop.name : t.location_name)}</h2>
         ${prop ? `<a class="small" href="#/property/${prop.id}">Property</a>` : ''}</div>
         ${prop && t.location_name ? `<p class="muted small" style="margin:4px 0 0">${esc(t.location_name)}</p>` : ''}
-        ${prop && t.property_has_photo ? `<div style="margin-top:8px">${photoWithPins(prop, t.pin_x != null ? [{ x: t.pin_x, y: t.pin_y, cls: 'mark' }] : [])}</div>
+        ${prop && t.property_has_photo ? `<div style="margin-top:8px">${photoWithMarks(prop, [{ marks: t.marks, cls: 'mark' }])}</div>
           <p class="small" style="margin-bottom:0"><a href="${photoUrl(prop)}" target="_blank" rel="noopener">Open full-size photo</a> (pinch to zoom)</p>` : ''}
       </div>` : ''}
     ${t.guide ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
@@ -421,7 +521,7 @@ async function viewTask(id) {
     <p class="muted small">Created by ${esc(t.created_by_name || '—')}</p>
     <div class="row">
       ${canEdit ? `<a class="btn" href="#/task/${t.id}/edit">Edit</a>` : ''}
-      <a class="btn" href="#/task/new?copy=${t.id}">Duplicate</a>
+      ${isOwner() ? `<a class="btn" href="#/task/new?copy=${t.id}">Duplicate</a>` : ''}
       ${canEdit && t.status === 'open' ? '<button class="danger" id="archiveBtn">Archive</button>' : ''}
       ${canEdit && t.status !== 'open' ? '<button id="reopenBtn">Reopen</button>' : ''}
     </div>`;
@@ -452,6 +552,8 @@ const PRESETS = {
   none: ['none', 1, ''],
   daily: ['daily', 1, ''],
   weekdays: ['weekly', 1, '1,2,3,4,5'],
+  mwf: ['weekly', 1, '1,3,5'],
+  tth: ['weekly', 1, '2,4'],
   weekly: ['weekly', 1, ''],
   biweekly: ['weekly', 2, ''],
   monthly: ['monthly', 1, ''],
@@ -466,7 +568,38 @@ function presetFor(t) {
   return t.recur_type === 'none' ? 'none' : 'custom';
 }
 
+// Hands: just "what needs doing" and an estimate, with Save or Save & mark complete.
+async function viewHandTaskForm(id) {
+  const t = id ? await api('GET', `/tasks/${id}`) : { title: '', est_minutes: '' };
+  main.innerHTML = `<p><a href="${id ? `#/task/${id}` : '#/'}">← Back</a></p>
+    <h1>${id ? 'Edit task' : 'New task'}</h1>
+    <form id="handTaskForm" class="card">
+      <div class="field"><label>What needs doing?</label>
+        <input name="title" required maxlength="160" value="${esc(t.title)}" placeholder="Fixed float on east water tank"></div>
+      <div class="field"><label>Estimated time (minutes)</label>
+        <input type="number" name="est_minutes" min="0" inputmode="numeric" value="${esc(t.est_minutes ?? '')}"></div>
+      ${id ? '<button class="primary big" type="submit" value="save">Save</button>'
+        : `<div class="stack"><button class="big" type="submit" value="save">Save</button>
+            <button class="primary big" type="submit" value="done">✓ Save &amp; mark complete</button></div>`}
+    </form>`;
+  const form = $('#handTaskForm');
+  form.addEventListener('submit', guard(async (e) => {
+    const d = formData(form);
+    if (id) {
+      await api('PUT', `/tasks/${id}`, d);
+      toast('Saved');
+      location.hash = `#/task/${id}`;
+      return;
+    }
+    const complete = e.submitter?.value === 'done';
+    const res = await api('POST', '/tasks', { ...d, complete });
+    toast(complete ? 'Saved and marked complete' : 'Task saved');
+    location.hash = complete ? '#/' : `#/task/${res.id}`;
+  }));
+}
+
 async function viewTaskForm(id, query) {
+  if (!isOwner()) return viewHandTaskForm(id);
   const [guides, properties] = await Promise.all([api('GET', '/guides'), api('GET', '/properties'), loadUsers()]);
   let t = { title: '', description: '', priority: 'normal', recur_type: 'none', recur_interval: 1, recur_weekdays: '', due_date: S.today };
   if (id) t = await api('GET', `/tasks/${id}`);
@@ -498,6 +631,7 @@ async function viewTaskForm(id, query) {
       <div class="grid2">
         <div class="field"><label>Repeats</label><select name="preset" id="preset">
           <option value="none">One time</option><option value="daily">Every day</option><option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="mwf">Mon / Wed / Fri</option><option value="tth">Tue / Thu</option>
           <option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Every month</option>
           <option value="quarterly">Quarterly</option><option value="twice">Twice a year</option><option value="yearly">Once a year</option>
           <option value="custom">Custom…</option></select></div>
@@ -522,7 +656,7 @@ async function viewTaskForm(id, query) {
       </select>
       ${properties.length ? '' : `<p class="muted small">${isOwner() ? 'Add properties and their aerial photos under the <a href="#/properties">Properties</a> tab.' : 'No properties have been added yet.'}</p>`}</div>
       <div class="field"><label>Spot (optional)</label><input name="location_name" maxlength="120" value="${esc(t.location_name || '')}" placeholder="North pasture gate"></div>
-      <input type="hidden" name="pin_x" value="${esc(t.pin_x ?? '')}"><input type="hidden" name="pin_y" value="${esc(t.pin_y ?? '')}">
+      <input type="hidden" name="marks" value="${esc(typeof t.marks === 'string' ? t.marks : '')}">
       <div id="pinArea" class="field"></div>
       <button class="primary big" type="submit">${id ? 'Save changes' : 'Create task'}</button>
     </form>`;
@@ -539,30 +673,16 @@ async function viewTaskForm(id, query) {
   form.recur_type.addEventListener('change', syncRecur);
   syncRecur();
 
-  // Property photo: tap to mark where the job is.
-  const paintPin = () => {
+  // Property photo: tap to drop spots or drag to draw lines.
+  const paintMarks = () => {
     const p = properties.find((x) => x.id === Number(form.property_id.value));
     const area = $('#pinArea');
     if (!p) { area.innerHTML = ''; return; }
     if (!p.has_photo) { area.innerHTML = '<p class="muted small">This property has no aerial photo yet.</p>'; return; }
-    const pin = form.pin_x.value !== '' ? [{ x: form.pin_x.value, y: form.pin_y.value, cls: 'mark' }] : [];
-    area.innerHTML = `<label>Mark the spot on the photo (optional)</label>
-      <p class="muted small" style="margin-top:0">Tap the photo where the job is.</p>
-      ${photoWithPins(p, pin, 'pinPhoto')}
-      ${pin.length ? '<button type="button" class="link" id="clearPin">Remove mark</button>' : ''}`;
-    $('#pinPhoto').addEventListener('click', (e) => {
-      const r = $('#pinPhoto img').getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width;
-      const y = (e.clientY - r.top) / r.height;
-      if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      form.pin_x.value = x.toFixed(4);
-      form.pin_y.value = y.toFixed(4);
-      paintPin();
-    });
-    $('#clearPin')?.addEventListener('click', () => { form.pin_x.value = form.pin_y.value = ''; paintPin(); });
+    markEditor(area, p, form.marks);
   };
-  form.property_id.addEventListener('change', () => { form.pin_x.value = form.pin_y.value = ''; paintPin(); });
-  paintPin();
+  form.property_id.addEventListener('change', () => { form.marks.value = ''; paintMarks(); });
+  paintMarks();
 
   form.addEventListener('submit', guard(async (e) => {
     const d = formData(form);
@@ -697,13 +817,13 @@ async function viewProperties() {
 
 async function viewProperty(id) {
   const p = await api('GET', `/properties/${id}`);
-  const pinned = p.tasks.filter((t) => t.pin_x != null);
+  const pinned = p.tasks.filter((t) => parseMarks(t.marks).length);
   main.innerHTML = `<p><a href="#/properties">← Properties</a></p>
     <div class="row between"><h1 style="margin:0">${esc(p.name)}</h1>
       <a class="btn primary" href="#/task/new?property=${p.id}">+ Task here</a></div>
     ${p.notes ? `<p class="desc">${esc(p.notes)}</p>` : ''}
     <div class="card" style="margin-top:12px">
-      ${p.has_photo ? `${photoWithPins(p, pinned.map((t, i) => ({ x: t.pin_x, y: t.pin_y, label: i + 1, cls: pinClass(t), href: `#/task/${t.id}`, title: t.title })))}
+      ${p.has_photo ? `${photoWithMarks(p, pinned.map((t, i) => ({ marks: t.marks, label: i + 1, cls: pinClass(t), href: `#/task/${t.id}`, title: t.title })))}
         <p class="small muted" style="margin-bottom:0"><span class="dot late"></span> overdue · <span class="dot today"></span> today ·
           <span class="dot soon"></span> upcoming · <span class="dot anytime"></span> anytime ·
           <a href="${photoUrl(p)}" target="_blank" rel="noopener">Full-size photo</a></p>`
@@ -740,17 +860,23 @@ async function viewProperty(id) {
 
 // ----- Time -----
 const EDIT_KIND = { add: 'Added punch', edit: 'Changed times', delete: 'Deleted punch', auto_clockout: 'Auto clock-out (14 hrs)', confirm: 'Confirmed auto clock-out' };
+const PTO_KIND = { add: 'Added PTO', edit: 'Changed PTO', delete: 'Deleted PTO' };
+const spanHours = (a, b) => (new Date(b) - new Date(a)) / 3600000;
 function editLine(x, showWho) {
-  const span = (a, b) => `${a ? fmtDateTime(a) : '—'} → ${b ? fmtDateTime(b) : 'on clock'}`;
+  const isPto = x.entry_kind === 'pto';
+  const span = isPto
+    ? (a, b) => `${fmtDay(a.slice(0, 10))} · ${hrs(spanHours(a, b))} hrs PTO`
+    : (a, b) => `${a ? fmtDateTime(a) : '—'} → ${b ? fmtDateTime(b) : 'on clock'}`;
   const before = x.old_in ? span(x.old_in, x.old_out) : '';
   const after = x.new_in ? span(x.new_in, x.new_out) : '';
   return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
-    <div class="row between"><b>${showWho ? esc(x.employee_name) + ' · ' : ''}${EDIT_KIND[x.kind] || esc(x.kind)}</b>
+    <div class="row between"><b>${showWho ? esc(x.employee_name) + ' · ' : ''}${(isPto ? PTO_KIND[x.kind] : EDIT_KIND[x.kind]) || esc(x.kind)}</b>
       <span class="small muted">${fmtDateTime(x.created_at)}</span></div>
     <div class="small">${before ? `<span class="muted">Was:</span> ${before}<br>` : ''}${after ? `<span class="muted">Now:</span> ${after}` : ''}</div>
     <div class="small muted">By ${x.editor_name ? esc(x.editor_name) : 'the system'}${x.reason ? ` — “${esc(x.reason)}”` : ''}</div></div>`;
 }
 function punchTags(e) {
+  if (e.kind === 'pto') return e.edited ? `<span class="tag flagged">Edited${e.edited_by_name ? ' by ' + esc(e.edited_by_name) : ''}</span>` : '';
   return [e.auto_closed ? `<span class="tag pending">${e.needs_review ? 'Auto clock-out · not confirmed' : 'Auto clock-out'}</span>` : '',
     e.edited ? `<span class="tag flagged">Edited${e.edited_by_name ? ' by ' + esc(e.edited_by_name) : ''}</span>` : ''].join(' ');
 }
@@ -766,8 +892,10 @@ async function viewTime(query) {
     refreshClock(),
   ]);
   const hoursOf = (e) => ((e.clock_out ? new Date(e.clock_out) : new Date()) - new Date(e.clock_in)) / 3600000;
-  const myTotal = entries.filter((e) => e.user_id === S.user.id).reduce((s, e) => s + hoursOf(e), 0);
-  const canEdit = (e) => isOwner() || e.user_id === S.user.id;
+  const mine = entries.filter((e) => e.user_id === S.user.id);
+  const myWorked = mine.filter((e) => e.kind !== 'pto').reduce((s, e) => s + hoursOf(e), 0);
+  const myPto = mine.filter((e) => e.kind === 'pto').reduce((s, e) => s + hoursOf(e), 0);
+  const canEdit = (e) => isOwner() || (e.user_id === S.user.id && e.kind !== 'pto');
   main.innerHTML = `
     <div class="card clock-card" id="clockCard">${clockCardInner()}</div>
     <h1>${isOwner() ? 'Time &amp; payroll' : 'My time'}</h1>
@@ -778,21 +906,25 @@ async function viewTime(query) {
         <div class="row"><a class="btn" href="/api/payroll.csv?from=${r.from}&to=${r.to}">⬇ CSV</a>
         ${S.emailEnabled ? '<button class="primary" id="emailPayroll">✉ Email to payroll</button>' : ''}</div></div>
       ${payroll.openEntries ? `<p class="warn">${payroll.openEntries} person(s) still clocked in. Their hours count up to now.</p>` : ''}
-      <div class="table-wrap"><table><thead><tr><th>Employee</th><th class="num">Hours</th><th class="num">Changed by hand</th><th class="num">Auto clock-outs</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>Employee</th><th class="num">Worked</th><th class="num">PTO</th>
+        <th class="num">Total</th><th class="num" title="Punches changed by hand or auto clocked out">Changes</th></tr></thead><tbody>
       ${payroll.summary.map((s) => `<tr><td>${esc(s.name)}${s.open ? ' <span class="tag pending">on clock</span>' : ''}</td>
-        <td class="num"><b>${hrs(s.total)}</b></td><td class="num">${s.edited || '—'}</td>
-        <td class="num">${s.auto ? s.auto + (s.unconfirmed ? ` (${s.unconfirmed} not confirmed)` : '') : '—'}</td></tr>`).join('')
-        || '<tr><td colspan="4" class="muted">No hours in this range.</td></tr>'}
+        <td class="num">${hrs(s.worked)}</td><td class="num">${s.pto ? hrs(s.pto) : '—'}</td><td class="num"><b>${hrs(s.total)}</b></td>
+        <td class="num">${s.edited + s.auto ? s.edited + s.auto + (s.unconfirmed ? ` (${s.unconfirmed} not confirmed)` : '') : '—'}</td></tr>`).join('')
+        || '<tr><td colspan="5" class="muted">No hours in this range.</td></tr>'}
       </tbody></table></div>
       <p class="muted small">Pay periods run the 1st–15th and the 16th–end of the month.
         ${S.emailEnabled ? (S.settings.payroll_email ? `Emails go to ${esc(S.settings.payroll_email)}.` : 'Set the payroll email in Settings.') : 'Download the CSV and send it to payroll, or set up email (see README).'}</p>
-    </div>` : `<div class="card"><b>${hrs(myTotal)} hrs</b> in this range</div>`}
-    <div class="section-title"><h2>${isOwner() ? 'All punches' : 'My punches'}</h2><button id="addPunch">+ Add missed punch</button></div>
+    </div>` : `<div class="card"><b>${hrs(myWorked)} hrs</b> worked${myPto ? ` + <b>${hrs(myPto)} hrs</b> PTO` : ''} in this range</div>`}
+    <div class="section-title"><h2>${isOwner() ? 'All punches' : 'My punches'}</h2></div>
+    <div class="row" style="margin-bottom:8px"><button id="addPunch">+ Add missed punch</button>
+      ${isOwner() ? '<button id="addPto">+ Add PTO</button>' : ''}</div>
     <div class="card table-wrap"><table><thead><tr>${isOwner() ? '<th>Who</th>' : ''}<th>Date</th><th>In</th><th>Out</th><th class="num">Hrs</th><th></th></tr></thead><tbody>
       ${entries.map((e) => {
         const tags = punchTags(e);
-        return `<tr>${isOwner() ? `<td>${esc(e.name)}</td>` : ''}<td>${fmtDay(e.work_date)}</td><td>${fmtTime(e.clock_in)}</td>
-          <td>${e.clock_out ? fmtTime(e.clock_out) : '<span class="tag pending">on clock</span>'}</td><td class="num">${hrs(hoursOf(e))}</td>
+        const inOut = e.kind === 'pto' ? '<td colspan="2"><span class="tag ok">PTO</span></td>'
+          : `<td>${fmtTime(e.clock_in)}</td><td>${e.clock_out ? fmtTime(e.clock_out) : '<span class="tag pending">on clock</span>'}</td>`;
+        return `<tr>${isOwner() ? `<td>${esc(e.name)}</td>` : ''}<td>${fmtDay(e.work_date)}</td>${inOut}<td class="num">${hrs(hoursOf(e))}</td>
           <td class="right">${canEdit(e) ? `<button class="link" data-edit="${e.id}">Edit</button>` : ''}</td></tr>
           ${tags || e.note ? `<tr><td colspan="${isOwner() ? 6 : 5}" class="small" style="border-top:none;padding-top:0">${tags}
             ${e.note ? `<span class="muted">${esc(e.note)}</span>` : ''}
@@ -812,8 +944,8 @@ async function viewTime(query) {
       ${isOwner() ? `<div class="field"><label>Employee</label><select name="user_id" ${e ? 'disabled' : 'required'}>${userOptions(e?.user_id, { blank: '— pick —' })}</select></div>` : ''}
       <div class="field"><label>Clock in</label><input type="datetime-local" name="clock_in" required value="${toLocalInput(e?.clock_in)}"></div>
       <div class="field"><label>Clock out</label><input type="datetime-local" name="clock_out" ${e && !e.clock_out ? '' : 'required'} value="${toLocalInput(e?.clock_out)}"></div>
-      <div class="field"><label>Reason${isOwner() ? ' (optional)' : ''}</label><input name="reason" maxlength="500" ${isOwner() ? '' : 'required'} placeholder="Forgot to clock in this morning"></div>
-      <p class="muted small">${isOwner() ? 'Changes are kept in the change log.' : 'The owner can see every change you make.'}</p>
+      <div class="field"><label>Reason${isOwner() || !e ? ' (optional)' : ''}</label><input name="reason" maxlength="500" ${isOwner() || !e ? '' : 'required'} placeholder="Forgot to clock in this morning"></div>
+      <p class="muted small">Changes are kept in the change log.</p>
       <div class="row"><button class="primary grow" type="submit">Save</button>
         ${e && isOwner() ? '<button type="button" class="danger" id="delPunch">Delete</button>' : ''}<button type="button" data-close>Cancel</button></div></form>`);
     $('#punchForm').addEventListener('submit', guard(async (ev) => {
@@ -832,8 +964,38 @@ async function viewTime(query) {
       render();
     }));
   };
+  // PTO: owner enters a date and number of hours.
+  const ptoModal = (e) => {
+    openModal(`<h2>${e ? 'Change PTO' : 'Add PTO'}</h2><form id="ptoForm">
+      <div class="field"><label>Employee</label><select name="user_id" ${e ? 'disabled' : 'required'}>${userOptions(e?.user_id, { blank: '— pick —' })}</select></div>
+      <div class="grid2">
+        <div class="field"><label>Date</label><input type="date" name="date" required value="${esc(e ? e.work_date : S.today)}"></div>
+        <div class="field"><label>Hours</label><input type="number" name="hours" required min="0.25" max="24" step="0.25" inputmode="decimal" value="${e ? hrs(hoursOf(e)) : '8'}"></div>
+      </div>
+      <div class="field"><label>Note (optional)</label><input name="reason" maxlength="500" value="${esc(e?.note || '')}" placeholder="Vacation day"></div>
+      <p class="muted small">PTO counts toward the pay period total and shows separately on the payroll report. Changes are kept in the change log.</p>
+      <div class="row"><button class="primary grow" type="submit">Save</button>
+        ${e ? '<button type="button" class="danger" id="delPto">Delete</button>' : ''}<button type="button" data-close>Cancel</button></div></form>`);
+    $('#ptoForm').addEventListener('submit', guard(async (ev) => {
+      const d = formData(ev.target);
+      e ? await api('PUT', `/time/${e.id}`, d) : await api('POST', '/time/pto', d);
+      closeModal();
+      toast('PTO saved');
+      render();
+    }));
+    $('#delPto')?.addEventListener('click', guard(async () => {
+      if (!confirm('Delete this PTO? It stays in the change log.')) return;
+      await api('DELETE', `/time/${e.id}`);
+      closeModal();
+      render();
+    }));
+  };
   $('#addPunch').addEventListener('click', () => punchModal(null));
-  $$('[data-edit]').forEach((b) => b.addEventListener('click', () => punchModal(entries.find((x) => x.id === Number(b.dataset.edit)))));
+  $('#addPto')?.addEventListener('click', () => ptoModal(null));
+  $$('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+    const e = entries.find((x) => x.id === Number(b.dataset.edit));
+    e.kind === 'pto' ? ptoModal(e) : punchModal(e);
+  }));
   $$('[data-hist]').forEach((b) => b.addEventListener('click', guard(async () => {
     const list = await api('GET', `/time/edits?entry_id=${b.dataset.hist}`);
     openModal(`<h2>Punch history</h2>${list.map((x) => editLine(x, false)).join('') || '<p class="muted">No changes.</p>'}
