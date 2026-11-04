@@ -275,13 +275,13 @@ route('GET', '/api/guides', async ({ env }) => {
   return json(results);
 });
 
-route('GET', '/api/guides/:id', async ({ env, params }) => {
+route('GET', '/api/guides/:id', async ({ env, params, user }) => {
   const g = await env.DB.prepare(
     `SELECT g.*, u.name AS updated_by_name FROM guides g LEFT JOIN users u ON u.id = g.updated_by WHERE g.id = ?`
   ).bind(Number(params.id)).first();
   if (!g) throw new HttpError(404, 'Guide not found');
   const { results: tasks } = await env.DB.prepare(
-    "SELECT id, title, due_date FROM tasks WHERE guide_id = ? AND status = 'open' ORDER BY due_date"
+    `SELECT id, title, due_date FROM tasks t WHERE guide_id = ? AND status = 'open'${visibleSql(user)} ORDER BY due_date`
   ).bind(g.id).all();
   return json({ ...g, tasks });
 });
@@ -322,6 +322,10 @@ route('DELETE', '/api/guides/:id', async ({ env, user, params }) => {
 });
 
 // ===== Tasks =====
+// Hands only see tasks that are unassigned or assigned to them.
+const canSeeTask = (user, t) => user.role === 'owner' || !t.assigned_to || t.assigned_to === user.id;
+const visibleSql = (user, alias = 't') => (user.role === 'owner' ? '' : ` AND (${alias}.assigned_to IS NULL OR ${alias}.assigned_to = ${Number(user.id)})`);
+
 const TASK_SELECT = `SELECT t.*, a.name AS assigned_name, c.name AS created_by_name, g.title AS guide_title,
   p.name AS property_name, p.photo_type IS NOT NULL AS property_has_photo, p.photo_updated_at AS property_photo_at,
   (SELECT MAX(completed_at) FROM completions x WHERE x.task_id = t.id) AS last_completed_at
@@ -331,19 +335,19 @@ const TASK_SELECT = `SELECT t.*, a.name AS assigned_name, c.name AS created_by_n
   LEFT JOIN guides g ON g.id = t.guide_id
   LEFT JOIN properties p ON p.id = t.property_id`;
 
-route('GET', '/api/tasks', async ({ env, url }) => {
+route('GET', '/api/tasks', async ({ env, url, user }) => {
   const status = url.searchParams.get('status') || 'open';
   if (!['open', 'done', 'archived'].includes(status)) throw new HttpError(400, 'Bad status');
   const { results } = await env.DB.prepare(
-    `${TASK_SELECT} WHERE t.status = ? ORDER BY t.due_date IS NULL, t.due_date,
+    `${TASK_SELECT} WHERE t.status = ?${visibleSql(user)} ORDER BY t.due_date IS NULL, t.due_date,
      CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.title LIMIT 1000`
   ).bind(status).all();
   return json(results);
 });
 
-route('GET', '/api/tasks/:id', async ({ env, params }) => {
+route('GET', '/api/tasks/:id', async ({ env, params, user }) => {
   const task = await env.DB.prepare(`${TASK_SELECT} WHERE t.id = ?`).bind(Number(params.id)).first();
-  if (!task) throw new HttpError(404, 'Task not found');
+  if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
   const guide = task.guide_id
     ? await env.DB.prepare('SELECT id, title, category, body FROM guides WHERE id = ?').bind(task.guide_id).first()
     : null;
@@ -354,6 +358,29 @@ route('GET', '/api/tasks/:id', async ({ env, params }) => {
   ).bind(task.id).all();
   return json({ ...task, guide, history });
 });
+
+// Spots and lines drawn on the property photo. Coordinates are 0..1 fractions
+// of the photo's width and height. Returns a JSON string, or null for none.
+function parseMarks(v) {
+  if (v == null || v === '') return null;
+  let list = v;
+  if (typeof v === 'string') {
+    try { list = JSON.parse(v); } catch { throw new HttpError(400, 'Marks on the photo are invalid'); }
+  }
+  if (!Array.isArray(list)) throw new HttpError(400, 'Marks on the photo are invalid');
+  if (list.length > 50) throw new HttpError(400, 'Too many marks on the photo (50 max)');
+  const ok = (n) => typeof n === 'number' && n >= 0 && n <= 1;
+  const r = (n) => Math.round(n * 10000) / 10000;
+  const out = list.map((m) => {
+    if (m?.type === 'pin' && ok(m.x) && ok(m.y)) return { type: 'pin', x: r(m.x), y: r(m.y) };
+    if (m?.type === 'line' && Array.isArray(m.points) && m.points.length >= 2 && m.points.length <= 500 &&
+        m.points.every((pt) => Array.isArray(pt) && ok(pt[0]) && ok(pt[1]))) {
+      return { type: 'line', points: m.points.map((pt) => [r(pt[0]), r(pt[1])]) };
+    }
+    throw new HttpError(400, 'A mark on the photo is off the photo or invalid');
+  });
+  return out.length ? JSON.stringify(out) : null;
+}
 
 async function taskFields(env, body, settings) {
   const recur_type = ['daily', 'weekly', 'monthly', 'yearly'].includes(body.recur_type) ? body.recur_type : 'none';
@@ -370,12 +397,8 @@ async function taskFields(env, body, settings) {
     est_minutes: optInt(body.est_minutes, 0, 100000),
     location_name: str(body.location_name, 120),
     property_id: optInt(body.property_id, 1, 1e9),
-    pin_x: optNum(body.pin_x),
-    pin_y: optNum(body.pin_y),
   };
-  // A spot on the property photo, as 0..1 fractions of its width and height.
-  if (!t.property_id || t.pin_x == null || t.pin_y == null) t.pin_x = t.pin_y = null;
-  else if (t.pin_x < 0 || t.pin_x > 1 || t.pin_y < 0 || t.pin_y > 1) throw new HttpError(400, 'Marked spot is off the photo');
+  t.marks = t.property_id ? parseMarks(body.marks) : null;
   if (t.recur_type !== 'none') {
     // Recurring tasks need a start date; the schedule is computed from it.
     if (!t.due_date) t.due_date = today(settings);
@@ -401,16 +424,25 @@ async function taskFields(env, body, settings) {
   return t;
 }
 
+// A hand's new task is just "what needs doing" and an estimate; it's due
+// today and assigned to them so other hands don't see it.
+function handTaskBody(user, body, settings) {
+  return { title: body.title, est_minutes: body.est_minutes, due_date: today(settings), assigned_to: user.id };
+}
+
 route('POST', '/api/tasks', async ({ env, user, body }) => {
   const settings = await getSettings(env);
-  const t = await taskFields(env, body, settings);
+  const t = await taskFields(env, user.role === 'owner' ? body : handTaskBody(user, body, settings), settings);
   const res = await env.DB.prepare(
     `INSERT INTO tasks (title, description, guide_id, assigned_to, priority, due_date, recur_type, recur_interval,
-       recur_weekdays, recur_anchor, est_minutes, location_name, property_id, pin_x, pin_y, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       recur_weekdays, recur_anchor, est_minutes, location_name, property_id, marks, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(t.title, t.description, t.guide_id, t.assigned_to, t.priority, t.due_date, t.recur_type, t.recur_interval,
-    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.pin_x, t.pin_y, user.id).run();
-  return json({ id: res.meta.last_row_id });
+    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks, user.id).run();
+  const id = res.meta.last_row_id;
+  // "Save & mark complete": record the completion in the same request.
+  if (body.complete) return json({ id, ...(await completeTask(env, user, id, body.notes)) });
+  return json({ id });
 });
 
 async function loadTaskForEdit(env, user, id) {
@@ -426,20 +458,22 @@ route('PUT', '/api/tasks/:id', async ({ env, user, params, body }) => {
   const id = Number(params.id);
   const existing = await loadTaskForEdit(env, user, id);
   const settings = await getSettings(env);
-  const t = await taskFields(env, body, settings);
+  // Hands can only change the title and estimate of tasks they created.
+  const input = user.role === 'owner' ? body : { ...existing, title: body.title, est_minutes: body.est_minutes, status: body.status };
+  const t = await taskFields(env, input, settings);
   // Keep the original schedule anchor if the rule itself didn't change.
   if (t.recur_type !== 'none' && existing.recur_anchor && existing.recur_type === t.recur_type &&
       existing.recur_interval === t.recur_interval && existing.recur_weekdays === t.recur_weekdays &&
-      existing.due_date === body.due_date) {
+      existing.due_date === input.due_date) {
     t.recur_anchor = existing.recur_anchor;
   }
-  const status = body.status === 'open' && existing.status !== 'open' ? 'open' : existing.status;
+  const status = input.status === 'open' && existing.status !== 'open' ? 'open' : existing.status;
   await env.DB.prepare(
     `UPDATE tasks SET title = ?, description = ?, guide_id = ?, assigned_to = ?, priority = ?, due_date = ?,
        recur_type = ?, recur_interval = ?, recur_weekdays = ?, recur_anchor = ?, est_minutes = ?,
-       location_name = ?, property_id = ?, pin_x = ?, pin_y = ?, status = ?, updated_at = ? WHERE id = ?`
+       location_name = ?, property_id = ?, marks = ?, status = ?, updated_at = ? WHERE id = ?`
   ).bind(t.title, t.description, t.guide_id, t.assigned_to, t.priority, t.due_date, t.recur_type, t.recur_interval,
-    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.pin_x, t.pin_y,
+    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks,
     status, nowIso(), id).run();
   return json({ ok: true });
 });
@@ -452,10 +486,9 @@ route('DELETE', '/api/tasks/:id', async ({ env, user, params }) => {
   return json({ ok: true });
 });
 
-route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => {
-  const id = Number(params.id);
+async function completeTask(env, user, id, notes) {
   const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
-  if (!task) throw new HttpError(404, 'Task not found');
+  if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
   if (task.status !== 'open') throw new HttpError(400, 'This task is already closed');
   const settings = await getSettings(env);
   const day = today(settings);
@@ -463,7 +496,7 @@ route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => 
     env.DB.prepare(
       `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(body.notes, 5000)),
+    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(notes, 5000)),
   ];
   let next = null;
   if (task.recur_type !== 'none') {
@@ -473,7 +506,11 @@ route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => 
     stmts.push(env.DB.prepare("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?").bind(nowIso(), id));
   }
   await env.DB.batch(stmts);
-  return json({ ok: true, next_due: next });
+  return { ok: true, next_due: next };
+}
+
+route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => {
+  return json(await completeTask(env, user, Number(params.id), body.notes));
 });
 
 // ===== Completions & owner review =====
@@ -526,9 +563,10 @@ const MAX_SHIFT_MS = AUTO_CLOCKOUT_HOURS * 3600000;
 
 function logEdit(env, { entry, editor, kind, oldIn = null, oldOut = null, newIn = null, newOut = null, reason = '', workDate }) {
   return env.DB.prepare(
-    `INSERT INTO time_edits (entry_id, entry_user_id, editor_id, kind, work_date, old_in, old_out, new_in, new_out, reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(entry.id, entry.user_id, editor, kind, workDate || entry.work_date, oldIn, oldOut, newIn, newOut, reason);
+    `INSERT INTO time_edits (entry_id, entry_user_id, editor_id, kind, work_date, old_in, old_out, new_in, new_out, reason, entry_kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(entry.id, entry.user_id, editor, kind, workDate || entry.work_date, oldIn, oldOut, newIn, newOut, reason,
+    entry.kind || 'work');
 }
 
 // Anyone still on the clock after 14 hours is clocked out automatically and
@@ -649,7 +687,6 @@ route('POST', '/api/time', async ({ env, user, body }) => {
   const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(uid).first();
   if (!target) throw new HttpError(400, 'Unknown employee');
   const reason = str(body.reason, 500);
-  if (!isOwnerUser && !reason) throw new HttpError(400, 'Please say why you are adding this punch');
   const cin = parseIso(body.clock_in, 'clock in');
   const cout = parseIso(body.clock_out, 'clock out');
   if (!cout) throw new HttpError(400, 'Clock out time is required');
@@ -672,6 +709,17 @@ route('PUT', '/api/time/:id', async ({ env, user, params, body }) => {
   const e = await env.DB.prepare('SELECT * FROM time_entries WHERE id = ?').bind(Number(params.id)).first();
   if (!e) throw new HttpError(404, 'Punch not found');
   if (!isOwnerUser && e.user_id !== user.id) throw new HttpError(403, 'You can only change your own time');
+  if (e.kind === 'pto') {
+    requireOwner(user);
+    const { cin, cout, date } = ptoTimes(body);
+    await env.DB.batch([
+      env.DB.prepare('UPDATE time_entries SET clock_in = ?, clock_out = ?, work_date = ?, note = ?, edited = 1, edited_by = ? WHERE id = ?')
+        .bind(cin, cout, date, str(body.reason, 500) || e.note, user.id, e.id),
+      logEdit(env, { entry: e, editor: user.id, kind: 'edit', workDate: date, oldIn: e.clock_in, oldOut: e.clock_out,
+        newIn: cin, newOut: cout, reason: str(body.reason, 500) }),
+    ]);
+    return json({ ok: true, changed: true });
+  }
   const settings = await getSettings(env);
   let cin = parseIso(body.clock_in, 'clock in');
   let cout = parseIso(body.clock_out, 'clock out');
@@ -695,6 +743,35 @@ route('PUT', '/api/time/:id', async ({ env, user, params, body }) => {
     }),
   ]);
   return json({ ok: true, changed });
+});
+
+// PTO is stored as a block of hours on its date (starting at noon UTC so the
+// date never shifts), which keeps the hour totals and payroll math simple.
+function ptoTimes(body) {
+  const date = optDate(body.date, 'Date');
+  if (!date) throw new HttpError(400, 'Pick the PTO date');
+  const hours = optNum(body.hours);
+  if (hours == null || hours <= 0 || hours > 24) throw new HttpError(400, 'PTO hours must be between 0 and 24');
+  const start = new Date(`${date}T12:00:00.000Z`);
+  if (Math.abs(start - Date.now()) > 400 * 86400000) throw new HttpError(400, 'PTO date must be within a year of today');
+  return { date, cin: start.toISOString(), cout: new Date(start.getTime() + Math.round(hours * 60) * 60000).toISOString() };
+}
+
+route('POST', '/api/time/pto', async ({ env, user, body }) => {
+  requireOwner(user);
+  const uid = optInt(body.user_id, 1, 1e9);
+  const target = uid && await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(uid).first();
+  if (!target) throw new HttpError(400, 'Pick an employee');
+  const { cin, cout, date } = ptoTimes(body);
+  const reason = str(body.reason, 500);
+  const res = await env.DB.prepare(
+    "INSERT INTO time_entries (user_id, clock_in, clock_out, work_date, note, kind, edited, edited_by) VALUES (?, ?, ?, ?, ?, 'pto', 0, ?)"
+  ).bind(uid, cin, cout, date, reason, user.id).run();
+  await logEdit(env, {
+    entry: { id: res.meta.last_row_id, user_id: uid, work_date: date, kind: 'pto' },
+    editor: user.id, kind: 'add', newIn: cin, newOut: cout, reason,
+  }).run();
+  return json({ ok: true });
 });
 
 route('DELETE', '/api/time/:id', async ({ env, user, params }) => {
@@ -772,7 +849,7 @@ async function emailPayroll(env, from, to) {
   const { settings, entries, summary } = await payrollData(env, from, to);
   if (!settings.payroll_email) throw new HttpError(400, 'Set the payroll email address in Settings first');
   const csv = payrollCsv(entries, summary, { tz: settings.timezone, from, to });
-  const lines = summary.map((s) => `${s.name}: ${s.total.toFixed(2)} hrs` +
+  const lines = summary.map((s) => `${s.name}: ${s.total.toFixed(2)} hrs` + (s.pto ? ` (${s.worked.toFixed(2)} worked + ${s.pto.toFixed(2)} PTO)` : '') +
     (s.edited || s.auto ? ` (${[s.edited && `${s.edited} changed by hand`, s.auto && `${s.auto} auto clock-out`].filter(Boolean).join(', ')})` : ''));
   const raw = buildPayrollEmail({
     from: env.PAYROLL_FROM,
@@ -820,7 +897,8 @@ route('GET', '/api/stats', async ({ env, url, user }) => {
       user_id: u.id,
       name: u.name,
       role: u.role,
-      hours: h ? h.total : 0,
+      hours: h ? h.worked : 0,
+      pto: h ? h.pto : 0,
       days_worked: days,
       completed: c.completed || 0,
       on_time: c.on_time || 0,
@@ -838,21 +916,21 @@ route('GET', '/api/stats', async ({ env, url, user }) => {
 // ===== Properties & aerial photos =====
 const MAX_PHOTO_BYTES = 1900000; // D1 rows top out at 2 MB; the app shrinks photos below this
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const PROPERTY_COLS = `p.id, p.name, p.notes, p.photo_type IS NOT NULL AS has_photo, p.photo_width, p.photo_height,
-  p.photo_updated_at, (SELECT COUNT(*) FROM tasks t WHERE t.property_id = p.id AND t.status = 'open') AS open_tasks`;
+const propertyCols = (user) => `p.id, p.name, p.notes, p.photo_type IS NOT NULL AS has_photo, p.photo_width, p.photo_height,
+  p.photo_updated_at, (SELECT COUNT(*) FROM tasks t WHERE t.property_id = p.id AND t.status = 'open'${visibleSql(user)}) AS open_tasks`;
 
-route('GET', '/api/properties', async ({ env }) => {
-  const { results } = await env.DB.prepare(`SELECT ${PROPERTY_COLS} FROM properties p ORDER BY p.name`).all();
+route('GET', '/api/properties', async ({ env, user }) => {
+  const { results } = await env.DB.prepare(`SELECT ${propertyCols(user)} FROM properties p ORDER BY p.name`).all();
   return json(results);
 });
 
-route('GET', '/api/properties/:id', async ({ env, params }) => {
-  const p = await env.DB.prepare(`SELECT ${PROPERTY_COLS} FROM properties p WHERE p.id = ?`).bind(Number(params.id)).first();
+route('GET', '/api/properties/:id', async ({ env, params, user }) => {
+  const p = await env.DB.prepare(`SELECT ${propertyCols(user)} FROM properties p WHERE p.id = ?`).bind(Number(params.id)).first();
   if (!p) throw new HttpError(404, 'Property not found');
   const { results: tasks } = await env.DB.prepare(
-    `SELECT t.id, t.title, t.due_date, t.priority, t.pin_x, t.pin_y, t.location_name, a.name AS assigned_name
+    `SELECT t.id, t.title, t.due_date, t.priority, t.marks, t.location_name, a.name AS assigned_name
      FROM tasks t LEFT JOIN users a ON a.id = t.assigned_to
-     WHERE t.property_id = ? AND t.status = 'open' ORDER BY t.due_date IS NULL, t.due_date, t.title`
+     WHERE t.property_id = ? AND t.status = 'open'${visibleSql(user)} ORDER BY t.due_date IS NULL, t.due_date, t.title`
   ).bind(p.id).all();
   return json({ ...p, tasks });
 });
@@ -884,7 +962,7 @@ route('DELETE', '/api/properties/:id', async ({ env, user, params }) => {
   requireOwner(user);
   const id = Number(params.id);
   await env.DB.batch([
-    env.DB.prepare('UPDATE tasks SET property_id = NULL, pin_x = NULL, pin_y = NULL WHERE property_id = ?').bind(id),
+    env.DB.prepare('UPDATE tasks SET property_id = NULL, marks = NULL WHERE property_id = ?').bind(id),
     env.DB.prepare('DELETE FROM properties WHERE id = ?').bind(id),
   ]);
   return json({ ok: true });

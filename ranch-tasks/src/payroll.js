@@ -29,27 +29,33 @@ export function entryHours(entry, nowIso) {
 
 const round2 = (x) => Math.round(x * 100) / 100;
 
-// entries: [{ user_id, name, clock_in, clock_out, work_date, edited, auto_closed, needs_review }]
-// Returns one summary per employee: total hours, hours by day, and how many
-// punches were changed by hand or closed automatically.
+// entries: [{ user_id, name, clock_in, clock_out, work_date, kind, edited, auto_closed, needs_review }]
+// Returns one summary per employee: worked hours (by day), PTO hours, total,
+// and how many punches were changed by hand or closed automatically.
 export function summarize(entries, { nowIso = new Date().toISOString() } = {}) {
   const byUser = new Map();
   for (const e of entries) {
     if (!byUser.has(e.user_id)) {
-      byUser.set(e.user_id, { user_id: e.user_id, name: e.name, days: {}, total: 0, open: false, edited: 0, auto: 0, unconfirmed: 0 });
+      byUser.set(e.user_id, {
+        user_id: e.user_id, name: e.name, days: {}, worked: 0, pto: 0, open: false, edited: 0, auto: 0, unconfirmed: 0,
+      });
     }
     const u = byUser.get(e.user_id);
     const h = entryHours(e, nowIso);
     if (!e.clock_out) u.open = true;
-    if (e.edited) u.edited++;
+    if (e.edited && e.kind !== 'pto') u.edited++;
     if (e.auto_closed) u.auto++;
     if (e.needs_review) u.unconfirmed++;
-    u.days[e.work_date] = (u.days[e.work_date] || 0) + h;
-    u.total += h;
+    if (e.kind === 'pto') {
+      u.pto += h;
+    } else {
+      u.days[e.work_date] = (u.days[e.work_date] || 0) + h;
+      u.worked += h;
+    }
   }
   const out = [...byUser.values()].map((u) => {
     for (const k of Object.keys(u.days)) u.days[k] = round2(u.days[k]);
-    return { ...u, total: round2(u.total) };
+    return { ...u, worked: round2(u.worked), pto: round2(u.pto), total: round2(u.worked + u.pto) };
   });
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
@@ -68,6 +74,7 @@ export function toCsv(rows) {
 
 export function changeLabel(e) {
   const parts = [];
+  if (e.kind === 'pto') parts.push('PTO');
   if (e.auto_closed) parts.push(e.needs_review ? `Auto clock-out at ${AUTO_CLOCKOUT_HOURS}h (not yet confirmed)` : `Auto clock-out at ${AUTO_CLOCKOUT_HOURS}h`);
   if (e.edited) parts.push(e.edited_by_name ? `Edited by ${e.edited_by_name}` : 'Edited');
   return parts.join('; ');
@@ -85,16 +92,16 @@ export function payrollCsv(entries, summary, { tz, from, to, nowIso = new Date()
     rows.push([
       e.name,
       e.work_date,
-      localTime(e.clock_in, tz),
-      e.clock_out ? localTime(e.clock_out, tz) : 'STILL CLOCKED IN',
+      e.kind === 'pto' ? 'PTO' : localTime(e.clock_in, tz),
+      e.kind === 'pto' ? '' : e.clock_out ? localTime(e.clock_out, tz) : 'STILL CLOCKED IN',
       entryHours(e, nowIso).toFixed(2),
       changeLabel(e),
       e.note || '',
     ]);
   }
-  rows.push([], ['Employee', 'Total Hours', 'Punches Changed By Hand', 'Auto Clock-outs']);
+  rows.push([], ['Employee', 'Worked Hours', 'PTO Hours', 'Total Hours', 'Punches Changed By Hand', 'Auto Clock-outs']);
   for (const s of summary) {
-    rows.push([s.name, s.total.toFixed(2), s.edited, s.auto]);
+    rows.push([s.name, s.worked.toFixed(2), s.pto.toFixed(2), s.total.toFixed(2), s.edited, s.auto]);
   }
   return toCsv(rows);
 }
