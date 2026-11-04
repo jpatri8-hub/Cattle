@@ -1,4 +1,4 @@
-import { esc, renderGuide } from './md.js';
+import { esc, renderGuide, parseFollowups } from './md.js';
 import { describeRule, addDays, parseDate } from './recurrence.js';
 import { payPeriodOf, previousPayPeriod } from './payperiod.js';
 
@@ -275,6 +275,9 @@ function paintClock() {
   const pill = $('#clockPill');
   const c = S.clock;
   if (!c) return;
+  const tb = $('#timeBadge');
+  tb.hidden = !(isOwner() && c.editsToReview);
+  tb.textContent = c.editsToReview > 99 ? '99+' : c.editsToReview || '';
   pill.hidden = false;
   pill.classList.toggle('on', Boolean(c.open));
   pill.textContent = c.open ? `On clock ${duration(Date.now() - new Date(c.open.clock_in))}` : 'Off clock';
@@ -363,17 +366,30 @@ async function refreshBadge() {
 }
 
 // ---------- complete task ----------
-function completeTask(task, after) {
+// checked: follow-up indexes ticked on the task page (null when opened from the list).
+async function completeTask(task, after, checked = null) {
+  // From the task list we only have a summary, so fetch the guide for its follow-ups.
+  const full = task.guide_id && !task.guide ? await api('GET', `/tasks/${task.id}`).catch(() => task) : task;
+  const ticked = new Set((checked || []).map(Number));
+  // From the task page, confirm just what was ticked there; from the list, offer every follow-up.
+  const followups = parseFollowups(full.guide?.body).filter((f) => checked === null || ticked.has(f.index));
   openModal(`<h2>Mark done: ${esc(task.title)}</h2>
     <form id="doneForm" class="stack">
+      ${followups.length ? `<div class="field"><label>Anything that needs doing?</label>
+        <p class="muted small" style="margin-top:0">Ticked items become high-priority to-dos for tomorrow, open to anyone.${checked === null ? '' : ' Untick any you added by mistake.'}</p>
+        <div class="followup-list">${followups.map((f) => `<label class="inline-check"><input type="checkbox" name="fu" value="${f.index}" ${ticked.has(f.index) ? 'checked' : ''}>
+          <span>${esc(f.todo)}</span></label>`).join('')}</div></div>` : ''}
       <div class="field"><label for="dn">Notes for the owner (optional)</label>
         <textarea id="dn" name="notes" placeholder="Anything to report? Broken water float, low on mineral, etc."></textarea></div>
       <div class="row"><button class="primary grow" type="submit">✓ Mark complete</button><button type="button" data-close>Cancel</button></div>
     </form>`);
   $('#doneForm').addEventListener('submit', guard(async (e) => {
-    const r = await api('POST', `/tasks/${task.id}/complete`, formData(e.target));
+    const followupsPicked = $$('input[name=fu]:checked', e.target).map((x) => Number(x.value));
+    const r = await api('POST', `/tasks/${task.id}/complete`, { notes: e.target.notes.value, followups: followupsPicked });
     closeModal();
-    toast(r.next_due ? `Done! Next due ${fmtDay(r.next_due)}` : 'Done!');
+    const made = r.created?.length ? ` ${r.created.length} to-do(s) added for tomorrow.` : '';
+    const dup = r.skipped?.length ? ` ${r.skipped.length} already on the list.` : '';
+    toast((r.next_due ? `Done! Next due ${fmtDay(r.next_due)}.` : 'Done!') + made + dup);
     refreshBadge();
     after?.();
   }));
@@ -443,7 +459,14 @@ async function viewTasks() {
     api('GET', '/tasks'),
     api('GET', `/completions?from=${S.today}&to=${S.today}`),
   ]);
-  const shown = tasks.filter((t) => filter === 'all' || !t.assigned_to || t.assigned_to === S.user.id);
+  const roleOf = (id) => S.users.find((u) => u.id === id)?.role;
+  const FILTERS = {
+    mine: (t) => t.assigned_to === S.user.id,
+    unassigned: (t) => !t.assigned_to,
+    hands: (t) => t.assigned_to && roleOf(t.assigned_to) === 'hand',
+    all: () => true,
+  };
+  const shown = tasks.filter(FILTERS[filter] || FILTERS.all);
   const week = addDays(S.today, 7);
   const groups = [
     ['Overdue', shown.filter((t) => t.due_date && t.due_date < S.today), 'late'],
@@ -457,8 +480,8 @@ async function viewTasks() {
     <div class="card clock-card" id="clockCard">${clockCardInner()}</div>
     <div class="row between">
       ${isOwner() ? `<div class="chips" style="margin:0">
-        <button class="chip ${filter === 'mine' ? 'on' : ''}" data-filter="mine">Mine + unassigned</button>
-        <button class="chip ${filter === 'all' ? 'on' : ''}" data-filter="all">Everyone</button>
+        ${[['mine', 'Mine'], ['unassigned', 'Unassigned'], ['hands', 'Hands'], ['all', 'All']].map(([k, label]) =>
+          `<button class="chip ${filter === k ? 'on' : ''}" data-filter="${k}">${label}</button>`).join('')}
       </div>` : '<span></span>'}
       <a class="btn primary" href="#/task/new">+ New task</a>
     </div>
@@ -468,7 +491,7 @@ async function viewTasks() {
       return `<div class="section-title ${cls || ''}"><h2>${title}</h2><span class="muted small">${list.length}</span></div>
         ${isLater && !collapsedLater ? `<button class="link" id="showLater">Show ${list.length} later task(s)</button>` : list.map(taskRow).join('')}`;
     }).join('')}
-    ${shown.length ? '' : '<div class="empty card">No open tasks. Tap <b>+ New task</b> to add one.</div>'}
+    ${shown.length ? '' : `<div class="empty card">${tasks.length ? 'No open tasks match this filter.' : 'No open tasks. Tap <b>+ New task</b> to add one.'}</div>`}
     ${doneToday.length ? `<div class="section-title"><h2>Done today</h2><span class="muted small">${doneToday.length}</span></div>
       <div class="card">${doneToday.map((c) => `<div class="row between small" style="padding:4px 0">
         <a href="#/task/${c.task_id}">✓ ${esc(c.task_title)}</a><span class="muted">${esc(c.user_name)} · ${fmtTime(c.completed_at)}</span></div>`).join('')}</div>` : ''}`;
@@ -508,7 +531,7 @@ async function viewTask(id) {
       </div>` : ''}
     ${t.guide ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
         <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
-        <p class="muted small">Tick off steps as you go.</p>
+        <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked “needs” become to-dos when you mark this task complete.' : ''}</p>
         <div class="guide-body" id="guideBody">${renderGuide(t.guide.body, { checklist: true })}</div></div>` : ''}
     <div class="card"><h2 style="margin-top:0">History</h2>
       ${t.history.length ? t.history.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
@@ -525,7 +548,8 @@ async function viewTask(id) {
       ${canEdit && t.status === 'open' ? '<button class="danger" id="archiveBtn">Archive</button>' : ''}
       ${canEdit && t.status !== 'open' ? '<button id="reopenBtn">Reopen</button>' : ''}
     </div>`;
-  $('#doneBtn')?.addEventListener('click', () => completeTask(t, render));
+  $('#doneBtn')?.addEventListener('click', () => completeTask(t, render,
+    $$('#guideBody input[data-followup]:checked').map((x) => x.dataset.followup)));
   const checked = new Set(store.get(chkKey, []));
   $$('#guideBody input[type=checkbox]').forEach((cb) => {
     cb.checked = checked.has(cb.dataset.step);
@@ -762,7 +786,10 @@ async function viewGuideForm(id) {
         <details class="small muted"><summary>Formatting help</summary>
           <p><code>## Heading</code> · <code>1. Numbered step</code> · <code>- Bullet</code> · <code>**bold**</code> ·
           <code>! Safety warning</code> (shows as a yellow callout) · <code>[link](https://…)</code>.
-          Steps and bullets become tick-boxes when a hand opens the guide from a task.</p></details></div>
+          Steps and bullets become tick-boxes when a hand opens the guide from a task.</p>
+          <p><b>Follow-ups:</b> <code>[ ] Needs hay -&gt; Put out hay</code> shows a tick-box. If it's ticked when the task is
+          marked complete, a high-priority to-do is created for the next day, named after the heading above it
+          (e.g. <code>## Sharpers</code> → “Put out hay – Sharpers”).</p></details></div>
       <div class="row"><button class="primary grow" type="submit">Save guide</button><button type="button" id="prev">Preview</button></div>
       <div class="guide-body card hidden" id="preview" style="margin-top:12px"></div>
     </form>`;
@@ -862,8 +889,12 @@ async function viewProperty(id) {
 const EDIT_KIND = { add: 'Added punch', edit: 'Changed times', delete: 'Deleted punch', auto_clockout: 'Auto clock-out (14 hrs)', confirm: 'Confirmed auto clock-out' };
 const PTO_KIND = { add: 'Added PTO', edit: 'Changed PTO', delete: 'Deleted PTO' };
 const spanHours = (a, b) => (new Date(b) - new Date(a)) / 3600000;
-function editLine(x, showWho) {
+function editLine(x, showWho, { reviewable = false } = {}) {
   const isPto = x.entry_kind === 'pto';
+  const waiting = x.needs_review && !x.reviewed_at;
+  const flag = !x.needs_review ? ''
+    : waiting ? `<span class="tag pending">⚑ Needs review</span>${reviewable ? ` <button class="link small" data-reviewed="${x.id}">✓ Reviewed</button>` : ''}`
+    : `<span class="tag ok">✓ Reviewed${x.reviewer_name ? ' by ' + esc(x.reviewer_name) : ''}</span>${reviewable ? ` <button class="link small" data-unreview="${x.id}">Undo</button>` : ''}`;
   const span = isPto
     ? (a, b) => `${fmtDay(a.slice(0, 10))} · ${hrs(spanHours(a, b))} hrs PTO`
     : (a, b) => `${a ? fmtDateTime(a) : '—'} → ${b ? fmtDateTime(b) : 'on clock'}`;
@@ -873,7 +904,8 @@ function editLine(x, showWho) {
     <div class="row between"><b>${showWho ? esc(x.employee_name) + ' · ' : ''}${(isPto ? PTO_KIND[x.kind] : EDIT_KIND[x.kind]) || esc(x.kind)}</b>
       <span class="small muted">${fmtDateTime(x.created_at)}</span></div>
     <div class="small">${before ? `<span class="muted">Was:</span> ${before}<br>` : ''}${after ? `<span class="muted">Now:</span> ${after}` : ''}</div>
-    <div class="small muted">By ${x.editor_name ? esc(x.editor_name) : 'the system'}${x.reason ? ` — “${esc(x.reason)}”` : ''}</div></div>`;
+    <div class="small muted">By ${x.editor_name ? esc(x.editor_name) : 'the system'}${x.reason ? ` — “${esc(x.reason)}”` : ''}</div>
+    ${flag ? `<div class="small" style="margin-top:4px">${flag}</div>` : ''}</div>`;
 }
 function punchTags(e) {
   if (e.kind === 'pto') return e.edited ? `<span class="tag flagged">Edited${e.edited_by_name ? ' by ' + esc(e.edited_by_name) : ''}</span>` : '';
@@ -885,10 +917,11 @@ async function viewTime(query) {
   const rk = query.get('range') || 'period';
   const r = ranges()[rk] || ranges().period;
   if (isOwner()) await loadUsers();
-  const [entries, payroll, edits] = await Promise.all([
+  const [entries, payroll, edits, toReview] = await Promise.all([
     api('GET', `/time?from=${r.from}&to=${r.to}`),
     isOwner() ? api('GET', `/payroll?from=${r.from}&to=${r.to}`) : null,
     api('GET', `/time/edits?from=${r.from}&to=${r.to}`),
+    isOwner() ? api('GET', '/time/edits?unreviewed=1') : [],
     refreshClock(),
   ]);
   const hoursOf = (e) => ((e.clock_out ? new Date(e.clock_out) : new Date()) - new Date(e.clock_in)) / 3600000;
@@ -916,6 +949,10 @@ async function viewTime(query) {
       <p class="muted small">Pay periods run the 1st–15th and the 16th–end of the month.
         ${S.emailEnabled ? (S.settings.payroll_email ? `Emails go to ${esc(S.settings.payroll_email)}.` : 'Set the payroll email in Settings.') : 'Download the CSV and send it to payroll, or set up email (see README).'}</p>
     </div>` : `<div class="card"><b>${hrs(myWorked)} hrs</b> worked${myPto ? ` + <b>${hrs(myPto)} hrs</b> PTO` : ''} in this range</div>`}
+    ${isOwner() ? `<div class="section-title"><h2>⚑ Time changes to review</h2>
+        ${toReview.length ? '<button id="reviewAll">✓ Mark all reviewed</button>' : ''}</div>
+      <div class="card">${toReview.map((x) => editLine(x, true, { reviewable: true })).join('')
+        || '<p class="muted" style="margin:0">All caught up. Changes by hands and automatic clock-outs show up here until you mark them reviewed.</p>'}</div>` : ''}
     <div class="section-title"><h2>${isOwner() ? 'All punches' : 'My punches'}</h2></div>
     <div class="row" style="margin-bottom:8px"><button id="addPunch">+ Add missed punch</button>
       ${isOwner() ? '<button id="addPto">+ Add PTO</button>' : ''}</div>
@@ -932,8 +969,23 @@ async function viewTime(query) {
       }).join('') || '<tr><td colspan="6" class="muted">No punches.</td></tr>'}
     </tbody></table></div>
     <div class="section-title"><h2>Change log</h2><span class="muted small">${edits.length}</span></div>
-    <div class="card">${edits.map((x) => editLine(x, isOwner())).join('') || '<p class="muted" style="margin:0">No manual changes in this range.</p>'}</div>`;
+    <div class="card">${edits.map((x) => editLine(x, isOwner(), { reviewable: isOwner() })).join('') || '<p class="muted" style="margin:0">No manual changes in this range.</p>'}</div>`;
   $$('[data-range]').forEach((b) => b.addEventListener('click', () => (location.hash = `#/time?range=${b.dataset.range}`)));
+  const afterReview = async () => { await refreshClock(); render(); };
+  $$('[data-reviewed]').forEach((b) => b.addEventListener('click', guard(async () => {
+    await api('POST', `/time/edits/${b.dataset.reviewed}/review`, { reviewed: true });
+    await afterReview();
+  })));
+  $$('[data-unreview]').forEach((b) => b.addEventListener('click', guard(async () => {
+    await api('POST', `/time/edits/${b.dataset.unreview}/review`, { reviewed: false });
+    await afterReview();
+  })));
+  $('#reviewAll')?.addEventListener('click', guard(async () => {
+    if (!confirm(`Mark all ${toReview.length} time change(s) as reviewed?`)) return;
+    await api('POST', '/time/edits/review-all', {});
+    toast('All time changes marked reviewed');
+    await afterReview();
+  }));
   $('#emailPayroll')?.addEventListener('click', guard(async () => {
     if (!confirm(`Email payroll for ${r.from} to ${r.to}?`)) return;
     const res = await api('POST', '/payroll/email', { from: r.from, to: r.to });

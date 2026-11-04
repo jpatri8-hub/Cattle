@@ -6,6 +6,7 @@ import {
   localDate, localHour, summarize, payrollCsv, payPeriodOf, previousPayPeriod, AUTO_CLOCKOUT_HOURS,
 } from './payroll.js';
 import { buildPayrollEmail } from './email.js';
+import { parseFollowups } from '../public/md.js';
 
 const SESSION_DAYS = 30;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -425,9 +426,9 @@ async function taskFields(env, body, settings) {
 }
 
 // A hand's new task is just "what needs doing" and an estimate; it's due
-// today and assigned to them so other hands don't see it.
+// today and open to anyone.
 function handTaskBody(user, body, settings) {
-  return { title: body.title, est_minutes: body.est_minutes, due_date: today(settings), assigned_to: user.id };
+  return { title: body.title, est_minutes: body.est_minutes, due_date: today(settings) };
 }
 
 route('POST', '/api/tasks', async ({ env, user, body }) => {
@@ -441,7 +442,7 @@ route('POST', '/api/tasks', async ({ env, user, body }) => {
     t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks, user.id).run();
   const id = res.meta.last_row_id;
   // "Save & mark complete": record the completion in the same request.
-  if (body.complete) return json({ id, ...(await completeTask(env, user, id, body.notes)) });
+  if (body.complete) return json({ id, ...(await completeTask(env, user, id, body)) });
   return json({ id });
 });
 
@@ -486,7 +487,30 @@ route('DELETE', '/api/tasks/:id', async ({ env, user, params }) => {
   return json({ ok: true });
 });
 
-async function completeTask(env, user, id, notes) {
+// Ticked follow-up items from the task's guide (e.g. "Needs hay" at Sharpers)
+// become high-priority to-dos for anyone, due the next day. An identical open
+// to-do isn't created twice.
+async function followupStatements(env, user, task, picked, day) {
+  if (!task.guide_id || !Array.isArray(picked) || !picked.length) return { stmts: [], created: [], skipped: [] };
+  const guide = await env.DB.prepare('SELECT body FROM guides WHERE id = ?').bind(task.guide_id).first();
+  const items = parseFollowups(guide?.body);
+  const wanted = [...new Set(picked.map(Number))].map((i) => items[i]).filter(Boolean);
+  const created = [];
+  const skipped = [];
+  const stmts = [];
+  for (const item of wanted) {
+    const title = item.todo.slice(0, 160);
+    const dup = await env.DB.prepare("SELECT id FROM tasks WHERE status = 'open' AND title = ? COLLATE NOCASE").bind(title).first();
+    if (dup || created.includes(title)) { skipped.push(title); continue; }
+    created.push(title);
+    stmts.push(env.DB.prepare(
+      `INSERT INTO tasks (title, description, priority, due_date, created_by) VALUES (?, ?, 'high', ?, ?)`
+    ).bind(title, `From "${task.title}" on ${day}: ${item.label}${item.where ? ' at ' + item.where : ''}.`, addDays(day, 1), user.id));
+  }
+  return { stmts, created, skipped };
+}
+
+async function completeTask(env, user, id, { notes, followups } = {}) {
   const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
   if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
   if (task.status !== 'open') throw new HttpError(400, 'This task is already closed');
@@ -498,6 +522,8 @@ async function completeTask(env, user, id, notes) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(notes, 5000)),
   ];
+  const fu = await followupStatements(env, user, task, followups, day);
+  stmts.push(...fu.stmts);
   let next = null;
   if (task.recur_type !== 'none') {
     next = nextDueAfterCompletion(task, day);
@@ -506,11 +532,11 @@ async function completeTask(env, user, id, notes) {
     stmts.push(env.DB.prepare("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?").bind(nowIso(), id));
   }
   await env.DB.batch(stmts);
-  return { ok: true, next_due: next };
+  return { ok: true, next_due: next, created: fu.created, skipped: fu.skipped };
 }
 
 route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => {
-  return json(await completeTask(env, user, Number(params.id), body.notes));
+  return json(await completeTask(env, user, Number(params.id), body));
 });
 
 // ===== Completions & owner review =====
@@ -563,10 +589,12 @@ const MAX_SHIFT_MS = AUTO_CLOCKOUT_HOURS * 3600000;
 
 function logEdit(env, { entry, editor, kind, oldIn = null, oldOut = null, newIn = null, newOut = null, reason = '', workDate }) {
   return env.DB.prepare(
-    `INSERT INTO time_edits (entry_id, entry_user_id, editor_id, kind, work_date, old_in, old_out, new_in, new_out, reason, entry_kind)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO time_edits (entry_id, entry_user_id, editor_id, kind, work_date, old_in, old_out, new_in, new_out, reason,
+       entry_kind, needs_review)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       CASE WHEN ?12 IS NULL OR (SELECT role FROM users WHERE id = ?12) <> 'owner' THEN 1 ELSE 0 END)`
   ).bind(entry.id, entry.user_id, editor, kind, workDate || entry.work_date, oldIn, oldOut, newIn, newOut, reason,
-    entry.kind || 'work');
+    entry.kind || 'work', editor);
 }
 
 // Anyone still on the clock after 14 hours is clocked out automatically and
@@ -606,7 +634,10 @@ route('GET', '/api/time/status', async ({ env, user }) => {
       .bind(user.id).all(),
   ]);
   const s = summarize(results.map((r) => ({ ...r, name: user.name })))[0];
-  return json({ open, todayHours: s?.days[day] || 0, periodHours: s?.total || 0, period, needsFix });
+  const editsToReview = user.role === 'owner'
+    ? await env.DB.prepare('SELECT COUNT(*) AS n FROM time_edits WHERE needs_review = 1 AND reviewed_at IS NULL').first('n')
+    : 0;
+  return json({ open, todayHours: s?.days[day] || 0, periodHours: s?.total || 0, period, needsFix, editsToReview });
 });
 
 route('POST', '/api/time/clock-in', async ({ env, user, body }) => {
@@ -794,6 +825,9 @@ route('GET', '/api/time/edits', async ({ env, url, user }) => {
   if (entryId) {
     where.push('x.entry_id = ?');
     args.push(entryId);
+  } else if (url.searchParams.get('unreviewed') === '1') {
+    // Everything still waiting for the owner, whatever its date.
+    where.push('x.needs_review = 1 AND x.reviewed_at IS NULL');
   } else {
     const { from, to } = rangeParams(url, settings);
     where.push('x.work_date >= ? AND x.work_date <= ?');
@@ -804,11 +838,31 @@ route('GET', '/api/time/edits', async ({ env, url, user }) => {
     args.push(user.id);
   }
   const { results } = await env.DB.prepare(
-    `SELECT x.*, u.name AS employee_name, ed.name AS editor_name FROM time_edits x
+    `SELECT x.*, u.name AS employee_name, ed.name AS editor_name, rv.name AS reviewer_name FROM time_edits x
      JOIN users u ON u.id = x.entry_user_id LEFT JOIN users ed ON ed.id = x.editor_id
+     LEFT JOIN users rv ON rv.id = x.reviewed_by
      WHERE ${where.join(' AND ')} ORDER BY x.created_at DESC LIMIT 500`
   ).bind(...args).all();
   return json(results);
+});
+
+// Owner marks a flagged time change as reviewed (or puts the flag back).
+route('POST', '/api/time/edits/:id/review', async ({ env, user, params, body }) => {
+  requireOwner(user);
+  const reviewed = body.reviewed !== false;
+  const res = await env.DB.prepare(
+    'UPDATE time_edits SET reviewed_at = ?, reviewed_by = ? WHERE id = ? AND needs_review = 1'
+  ).bind(reviewed ? nowIso() : null, reviewed ? user.id : null, Number(params.id)).run();
+  if (!res.meta.changes) throw new HttpError(404, 'Change not found');
+  return json({ ok: true });
+});
+
+route('POST', '/api/time/edits/review-all', async ({ env, user }) => {
+  requireOwner(user);
+  const res = await env.DB.prepare(
+    'UPDATE time_edits SET reviewed_at = ?, reviewed_by = ? WHERE needs_review = 1 AND reviewed_at IS NULL'
+  ).bind(nowIso(), user.id).run();
+  return json({ reviewed: res.meta.changes });
 });
 
 // ===== Payroll (semi-monthly: 1st–15th and 16th–end of month) =====

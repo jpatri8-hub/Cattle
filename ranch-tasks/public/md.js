@@ -3,7 +3,28 @@
 //
 // Supported:  # Heading   ## Sub   - bullet   1. step   **bold**   *italic*
 //             ! Safety warning line   [link text](https://...)   blank line = new paragraph
+//             [ ] Needs hay -> Put out hay   (follow-up: becomes a to-do if ticked)
 // With { checklist: true }, bullets and numbered steps become tickable boxes.
+
+// A follow-up line: "[ ] What to tick -> To-do to create". The to-do's title
+// gets the nearest heading above it added, e.g. "Put out hay – Sharpers".
+const FOLLOWUP_RE = /^\[\s?\]\s+(.+?)\s*(?:->|→)\s*(.+)$/;
+const HEADING_RE = /^(#{1,3})\s+(.*)$/;
+
+// Shared with the server, which uses it to create the to-dos.
+export function parseFollowups(text) {
+  const out = [];
+  let heading = '';
+  for (const raw of String(text || '').replace(/\r/g, '').split('\n')) {
+    const t = raw.trim();
+    let m;
+    if ((m = t.match(HEADING_RE))) heading = m[2].replace(/\*\*/g, '').trim();
+    else if ((m = t.match(FOLLOWUP_RE))) {
+      out.push({ index: out.length, label: m[1], where: heading, todo: heading ? `${m[2]} – ${heading}` : m[2] });
+    }
+  }
+  return out;
+}
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,14 +42,26 @@ export function renderGuide(text, { checklist = false, idPrefix = 'step' } = {})
   const out = [];
   let list = null; // 'ul' | 'ol'
   let step = 0;
-  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  let followup = 0;
+  const closeList = () => { if (list) { out.push(list === 'fu' ? '</ul>' : `</${list}>`); list = null; } };
 
   for (const raw of lines) {
     const line = esc(raw.trimEnd());
     const t = line.trim();
     let m;
     if (!t) { closeList(); continue; }
-    if ((m = t.match(/^(#{1,3})\s+(.*)$/))) {
+    const fu = raw.trim().match(FOLLOWUP_RE);
+    if (fu) {
+      if (list !== 'fu') { closeList(); out.push('<ul class="checklist followups">'); list = 'fu'; }
+      const i = followup++;
+      const label = inline(esc(fu[1]));
+      const todo = esc(fu[2]);
+      out.push(checklist
+        ? `<li><label><input type="checkbox" data-followup="${i}"> <span>${label} <small class="muted">→ to-do: ${todo}</small></span></label></li>`
+        : `<li>☐ ${label} <small class="muted">→ to-do: ${todo}</small></li>`);
+      continue;
+    }
+    if ((m = t.match(HEADING_RE))) {
       closeList();
       const lvl = m[1].length + 2; // h3..h5 inside a page
       out.push(`<h${lvl}>${inline(m[2])}</h${lvl}>`);
