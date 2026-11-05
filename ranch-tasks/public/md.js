@@ -4,12 +4,14 @@
 // Supported:  # Heading   ## Sub   - bullet   1. step   **bold**   *italic*
 //             ! Safety warning line   [link text](https://...)   blank line = new paragraph
 //             [ ] Needs hay -> Put out hay   (follow-up: becomes a to-do if ticked)
+//             ## [ ] Sharpers                (a heading with its own tick-box, e.g. a stop on a route)
 // With { checklist: true }, bullets and numbered steps become tickable boxes.
 
 // A follow-up line: "[ ] What to tick -> To-do to create". The to-do's title
 // gets the nearest heading above it added, e.g. "Put out hay – Sharpers".
 const FOLLOWUP_RE = /^\[\s?\]\s+(.+?)\s*(?:->|→)\s*(.+)$/;
 const HEADING_RE = /^(#{1,3})\s+(.*)$/;
+const BOX_RE = /^\[\s?\]\s+/;
 
 // Shared with the server, which uses it to create the to-dos.
 export function parseFollowups(text) {
@@ -18,9 +20,9 @@ export function parseFollowups(text) {
   for (const raw of String(text || '').replace(/\r/g, '').split('\n')) {
     const t = raw.trim();
     let m;
-    if ((m = t.match(HEADING_RE))) heading = m[2].replace(/\*\*/g, '').trim();
+    if ((m = t.match(HEADING_RE))) heading = m[2].replace(BOX_RE, '').replace(/\*\*/g, '').trim();
     else if ((m = t.match(FOLLOWUP_RE))) {
-      out.push({ index: out.length, label: m[1], where: heading, todo: heading ? `${m[2]} – ${heading}` : m[2] });
+      out.push({ index: out.length, label: m[1], action: m[2], where: heading, todo: heading ? `${m[2]} – ${heading}` : m[2] });
     }
   }
   return out;
@@ -64,7 +66,16 @@ export function renderGuide(text, { checklist = false, idPrefix = 'step' } = {})
     if ((m = t.match(HEADING_RE))) {
       closeList();
       const lvl = m[1].length + 2; // h3..h5 inside a page
-      out.push(`<h${lvl}>${inline(m[2])}</h${lvl}>`);
+      if (BOX_RE.test(m[2])) {
+        // "## [ ] Sharpers": a stop you tick off as you go.
+        const text = inline(m[2].replace(BOX_RE, ''));
+        step++;
+        out.push(checklist
+          ? `<h${lvl} class="stop"><label><input type="checkbox" data-step="${step}" id="${idPrefix}-${step}"> <span>${text}</span></label></h${lvl}>`
+          : `<h${lvl} class="stop">☐ ${text}</h${lvl}>`);
+      } else {
+        out.push(`<h${lvl}>${inline(m[2])}</h${lvl}>`);
+      }
     } else if ((m = t.match(/^(?:!|⚠️?)\s*(.*)$/))) {
       closeList();
       out.push(`<div class="warn"><b>⚠ Safety:</b> ${inline(m[1])}</div>`);

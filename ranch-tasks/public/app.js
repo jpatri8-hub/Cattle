@@ -376,7 +376,7 @@ async function completeTask(task, after, checked = null) {
   openModal(`<h2>Mark done: ${esc(task.title)}</h2>
     <form id="doneForm" class="stack">
       ${followups.length ? `<div class="field"><label>Anything that needs doing?</label>
-        <p class="muted small" style="margin-top:0">Ticked items become high-priority to-dos for tomorrow, open to anyone.${checked === null ? '' : ' Untick any you added by mistake.'}</p>
+        <p class="muted small" style="margin-top:0">Ticked items are grouped into one high-priority to-do per supply, open to anyone.${checked === null ? '' : ' Untick any you added by mistake.'}</p>
         <div class="followup-list">${followups.map((f) => `<label class="inline-check"><input type="checkbox" name="fu" value="${f.index}" ${ticked.has(f.index) ? 'checked' : ''}>
           <span>${esc(f.todo)}</span></label>`).join('')}</div></div>` : ''}
       <div class="field"><label for="dn">Notes for the owner (optional)</label>
@@ -387,8 +387,8 @@ async function completeTask(task, after, checked = null) {
     const followupsPicked = $$('input[name=fu]:checked', e.target).map((x) => Number(x.value));
     const r = await api('POST', `/tasks/${task.id}/complete`, { notes: e.target.notes.value, followups: followupsPicked });
     closeModal();
-    const made = r.created?.length ? ` ${r.created.length} to-do(s) added for tomorrow.` : '';
-    const dup = r.skipped?.length ? ` ${r.skipped.length} already on the list.` : '';
+    const made = r.created?.length ? ` New to-do: ${r.created.join('; ')}.` : '';
+    const dup = r.updated?.length ? ` Added stops to: ${r.updated.join('; ')}.` : '';
     toast((r.next_due ? `Done! Next due ${fmtDay(r.next_due)}.` : 'Done!') + made + dup);
     refreshBadge();
     after?.();
@@ -531,7 +531,7 @@ async function viewTask(id) {
       </div>` : ''}
     ${t.guide ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
         <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
-        <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked “needs” become to-dos when you mark this task complete.' : ''}</p>
+        <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked “needs” become to-dos (one per supply) when you mark this task complete.' : ''}</p>
         <div class="guide-body" id="guideBody">${renderGuide(t.guide.body, { checklist: true })}</div></div>` : ''}
     <div class="card"><h2 style="margin-top:0">History</h2>
       ${t.history.length ? t.history.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
@@ -644,7 +644,7 @@ async function viewTaskForm(id, query) {
       <div class="field"><label>Instructions (guide)</label>
         <div class="row"><select name="guide_id" class="grow" style="flex:1">
           <option value="">— none —</option>
-          ${guides.map((g) => `<option value="${g.id}" ${g.id === t.guide_id ? 'selected' : ''}>${esc(g.category)}: ${esc(g.title)}</option>`).join('')}
+          ${guides.filter((g) => !g.archived || g.id === t.guide_id).map((g) => `<option value="${g.id}" ${g.id === t.guide_id ? 'selected' : ''}>${esc(g.category)}: ${esc(g.title)}${g.archived ? ' (archived)' : ''}</option>`).join('')}
         </select><a class="btn" href="#/guide/new">+ New guide</a></div>
         <p class="muted small">Reusable how-to notes (hookup steps, safety). Write once, attach to any task.</p></div>
       <div class="grid2">
@@ -659,7 +659,8 @@ async function viewTaskForm(id, query) {
           <option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Every month</option>
           <option value="quarterly">Quarterly</option><option value="twice">Twice a year</option><option value="yearly">Once a year</option>
           <option value="custom">Custom…</option></select></div>
-        <div class="field"><label id="dueLabel">Due date</label><input type="date" name="due_date" value="${esc(t.due_date || '')}"></div>
+        <div class="field"><label id="dueLabel">Due date</label><input type="date" name="due_date" value="${esc(t.due_date || '')}">
+          <label class="inline-check small" id="noDueWrap" style="margin-top:6px"><input type="checkbox" id="noDue" ${id && !t.due_date ? 'checked' : ''}> No due date (anytime)</label></div>
       </div>
       <div id="custom" class="card" style="background:var(--bg)">
         <div class="grid2">
@@ -690,10 +691,17 @@ async function viewTaskForm(id, query) {
     const p = $('#preset').value;
     $('#custom').classList.toggle('hidden', p !== 'custom');
     $('#wdField').classList.toggle('hidden', form.recur_type.value !== 'weekly');
-    $('#dueLabel').textContent = p === 'none' ? 'Due date (blank = anytime)' : 'Starts on';
+    $('#dueLabel').textContent = p === 'none' ? 'Due date' : 'Starts on';
+    // Recurring tasks always need a start date.
+    $('#noDueWrap').classList.toggle('hidden', p !== 'none');
+    const noDue = p === 'none' && $('#noDue').checked;
+    form.due_date.disabled = noDue;
+    if (noDue) form.due_date.value = '';
+    else if (!form.due_date.value) form.due_date.value = S.today;
     $('#recurHelp').textContent = p === 'none' ? '' : 'When marked complete, the task moves itself to the next due date.';
   };
   $('#preset').addEventListener('change', syncRecur);
+  $('#noDue').addEventListener('change', syncRecur);
   form.recur_type.addEventListener('change', syncRecur);
   syncRecur();
 
@@ -710,6 +718,7 @@ async function viewTaskForm(id, query) {
 
   form.addEventListener('submit', guard(async (e) => {
     const d = formData(form);
+    if (form.due_date.disabled) d.due_date = '';
     const p = d.preset;
     if (p !== 'custom') {
       [d.recur_type, d.recur_interval, d.recur_weekdays] = PRESETS[p];
@@ -734,10 +743,17 @@ async function viewClosed() {
 // ----- Guides -----
 const GUIDE_CATS = ['Equipment', 'Livestock', 'Fencing', 'Maintenance', 'Feeding', 'Safety', 'Other'];
 
-async function viewGuides() {
-  const guides = await api('GET', '/guides');
-  main.innerHTML = `<div class="row between"><h1>How-to guides</h1><a class="btn primary" href="#/guide/new">+ New guide</a></div>
-    <p class="muted">Hookup steps, operating tips and safety notes. Attach a guide to any task so it shows up every time.</p>
+async function viewGuides(query) {
+  const all = await api('GET', '/guides');
+  const showArchived = isOwner() && query.get('archived') === '1';
+  const guides = all.filter((g) => Boolean(g.archived) === showArchived);
+  const archivedCount = all.filter((g) => g.archived).length;
+  main.innerHTML = `<div class="row between"><h1>${showArchived ? 'Archived guides' : 'How-to guides'}</h1>
+      ${isOwner() && !showArchived ? '<a class="btn primary" href="#/guide/new">+ New guide</a>' : ''}</div>
+    <p class="muted">${showArchived ? 'Archived guides are hidden from the guide list and the task form. Open one to restore it.'
+      : 'Hookup steps, operating tips and safety notes. Attach a guide to any task so it shows up every time.'}</p>
+    ${isOwner() ? `<p class="small">${showArchived ? '<a href="#/guides">← Back to guides</a>'
+      : archivedCount ? `<a href="#/guides?archived=1">Archived guides (${archivedCount})</a>` : ''}</p>` : ''}
     <input id="q" type="search" placeholder="Search guides…" style="margin-bottom:12px">
     <div id="glist"></div>`;
   const paint = () => {
@@ -749,7 +765,7 @@ async function viewGuides() {
       return head + `<a class="list-link" href="#/guide/${g.id}"><div class="card"><b>${esc(g.title)}</b>
         <div class="small muted">${esc(g.preview.replace(/[#*!\-\[\]]/g, '').slice(0, 120))}…</div>
         ${g.task_count ? `<div class="small">Used by ${g.task_count} open task(s)</div>` : ''}</div></a>`;
-    }).join('') || '<div class="empty card">No guides yet.</div>';
+    }).join('') || `<div class="empty card">${showArchived ? 'No archived guides.' : 'No guides yet.'}</div>`;
   };
   $('#q').addEventListener('input', paint);
   paint();
@@ -758,14 +774,23 @@ async function viewGuides() {
 async function viewGuide(id) {
   const g = await api('GET', `/guides/${id}`);
   main.innerHTML = `<p><a href="#/guides">← Guides</a></p>
-    <div class="card"><span class="tag">${esc(g.category)}</span><h1 style="margin-top:6px">${esc(g.title)}</h1>
+    <div class="card"><span class="tag">${esc(g.category)}</span>${g.archived ? ' <span class="tag pending">Archived</span>' : ''}
+      <h1 style="margin-top:6px">${esc(g.title)}</h1>
       <div class="guide-body" id="gb">${renderGuide(g.body, { checklist: true })}</div>
       <p class="muted small">Last updated ${fmtDateTime(g.updated_at)}${g.updated_by_name ? ' by ' + esc(g.updated_by_name) : ''}</p></div>
     ${g.tasks.length ? `<div class="card"><h2 style="margin-top:0">Open tasks using this guide</h2>
       ${g.tasks.map((t) => `<div><a href="#/task/${t.id}">${esc(t.title)}</a> <span class="muted small">${t.due_date ? fmtDay(t.due_date) : ''}</span></div>`).join('')}</div>` : ''}
     <div class="row"><a class="btn" href="#/guide/${g.id}/edit">Edit</a>
       <a class="btn" href="#/task/new?guide=${g.id}">+ Task with this guide</a>
-      ${isOwner() ? '<button class="danger" id="delGuide">Delete</button>' : ''}</div>`;
+      ${isOwner() ? `<button id="archGuide">${g.archived ? 'Restore' : 'Archive'}</button>
+        <button class="danger" id="delGuide">Delete</button>` : ''}</div>`;
+  $('#archGuide')?.addEventListener('click', guard(async () => {
+    if (!g.archived && !confirm('Archive this guide? It will be hidden from the guide list and task form. Tasks using it keep it.')) return;
+    await api('PUT', `/guides/${g.id}/archive`, { archived: !g.archived });
+    toast(g.archived ? 'Guide restored' : 'Guide archived');
+    location.hash = g.archived ? `#/guide/${g.id}` : '#/guides';
+    if (g.archived) render();
+  }));
   $('#delGuide')?.addEventListener('click', guard(async () => {
     if (!confirm('Delete this guide? Tasks using it will keep working, just without instructions.')) return;
     await api('DELETE', `/guides/${g.id}`);
@@ -787,9 +812,10 @@ async function viewGuideForm(id) {
           <p><code>## Heading</code> · <code>1. Numbered step</code> · <code>- Bullet</code> · <code>**bold**</code> ·
           <code>! Safety warning</code> (shows as a yellow callout) · <code>[link](https://…)</code>.
           Steps and bullets become tick-boxes when a hand opens the guide from a task.</p>
-          <p><b>Follow-ups:</b> <code>[ ] Needs hay -&gt; Put out hay</code> shows a tick-box. If it's ticked when the task is
-          marked complete, a high-priority to-do is created for the next day, named after the heading above it
-          (e.g. <code>## Sharpers</code> → “Put out hay – Sharpers”).</p></details></div>
+          <p><b>Follow-ups:</b> <code>[ ] Needs hay -&gt; Put out hay</code> shows a tick-box. When the task is marked
+          complete, ticked items are grouped into one high-priority to-do per supply with no due date, listing the
+          headings they were under (e.g. “Put out hay: Sharpers, Lake field”).</p>
+          <p><b>Stops:</b> <code>## [ ] Sharpers</code> makes a heading with its own tick-box to mark off as you go.</p></details></div>
       <div class="row"><button class="primary grow" type="submit">Save guide</button><button type="button" id="prev">Preview</button></div>
       <div class="guide-body card hidden" id="preview" style="margin-top:12px"></div>
     </form>`;
@@ -1213,7 +1239,7 @@ const ROUTES = [
   [/^\/task\/(\d+)$/, (m) => viewTask(m[1]), 'today'],
   [/^\/task\/(\d+)\/edit$/, (m, q) => viewTaskForm(m[1], q), 'today'],
   [/^\/closed$/, viewClosed, 'more'],
-  [/^\/guides$/, viewGuides, 'guides'],
+  [/^\/guides$/, (m, q) => viewGuides(q), 'guides'],
   [/^\/guide\/new$/, () => viewGuideForm(null), 'guides'],
   [/^\/guide\/(\d+)$/, (m) => viewGuide(m[1]), 'guides'],
   [/^\/guide\/(\d+)\/edit$/, (m) => viewGuideForm(m[1]), 'guides'],
