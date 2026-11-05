@@ -31,3 +31,13 @@ test('follow-up text is escaped', () => {
   const html = renderGuide('## <b>x</b>\n[ ] Needs <img src=x> -> Put <script>', { checklist: true });
   assert.ok(!html.includes('<img') && !html.includes('<script') && !html.includes('<b>'));
 });
+
+test('stop headings get their own tick-box and still name follow-ups', () => {
+  const g = '## [ ] Sharpers\n[ ] Needs hay -> Put out hay\n## [ ] Church field';
+  const f = parseFollowups(g);
+  assert.equal(f[0].where, 'Sharpers');
+  assert.equal(f[0].action, 'Put out hay');
+  const html = renderGuide(g, { checklist: true });
+  assert.equal((html.match(/class="stop"/g) || []).length, 2);
+  assert.equal((html.match(/data-step=/g) || []).length, 2);
+});

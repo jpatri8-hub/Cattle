@@ -269,7 +269,7 @@ route('PUT', '/api/settings', async ({ env, user, body }) => {
 // ===== Guides (reusable instructions) =====
 route('GET', '/api/guides', async ({ env }) => {
   const { results } = await env.DB.prepare(
-    `SELECT g.id, g.title, g.category, g.updated_at, substr(g.body, 1, 160) AS preview,
+    `SELECT g.id, g.title, g.category, g.updated_at, g.archived, substr(g.body, 1, 160) AS preview,
        (SELECT COUNT(*) FROM tasks t WHERE t.guide_id = g.id AND t.status = 'open') AS task_count
      FROM guides g ORDER BY g.category, g.title`
   ).all();
@@ -296,6 +296,7 @@ function guideFields(body) {
 }
 
 route('POST', '/api/guides', async ({ env, user, body }) => {
+  requireOwner(user);
   const g = guideFields(body);
   const res = await env.DB.prepare(
     'INSERT INTO guides (title, category, body, created_by, updated_by) VALUES (?, ?, ?, ?, ?)'
@@ -308,6 +309,16 @@ route('PUT', '/api/guides/:id', async ({ env, user, params, body }) => {
   const res = await env.DB.prepare(
     'UPDATE guides SET title = ?, category = ?, body = ?, updated_by = ?, updated_at = ? WHERE id = ?'
   ).bind(g.title, g.category, g.body, user.id, nowIso(), Number(params.id)).run();
+  if (!res.meta.changes) throw new HttpError(404, 'Guide not found');
+  return json({ ok: true });
+});
+
+// Archived guides are hidden from the guide list and task form; tasks that
+// already use one keep their instructions.
+route('PUT', '/api/guides/:id/archive', async ({ env, user, params, body }) => {
+  requireOwner(user);
+  const res = await env.DB.prepare('UPDATE guides SET archived = ?, updated_at = ? WHERE id = ?')
+    .bind(body.archived === false ? 0 : 1, nowIso(), Number(params.id)).run();
   if (!res.meta.changes) throw new HttpError(404, 'Guide not found');
   return json({ ok: true });
 });
@@ -488,26 +499,64 @@ route('DELETE', '/api/tasks/:id', async ({ env, user, params }) => {
 });
 
 // Ticked follow-up items from the task's guide (e.g. "Needs hay" at Sharpers)
-// become high-priority to-dos for anyone, due the next day. An identical open
-// to-do isn't created twice.
+// are grouped into one high-priority to-do per supply, open to anyone with no
+// due date: "Put out hay: Sharpers, Lake field". If that to-do is still open,
+// new stops are added to it instead of making another.
+function followupTitle(action, stops) {
+  let title = `${action}: ${stops.join(', ')}`;
+  for (let n = stops.length - 1; title.length > 160 && n > 0; n--) {
+    title = `${action}: ${stops.slice(0, n).join(', ')} +${stops.length - n} more`;
+  }
+  return title.slice(0, 160);
+}
+
+function parseStops(v) {
+  try {
+    const a = JSON.parse(v || '[]');
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function followupStatements(env, user, task, picked, day) {
-  if (!task.guide_id || !Array.isArray(picked) || !picked.length) return { stmts: [], created: [], skipped: [] };
+  const none = { stmts: [], created: [], updated: [] };
+  if (!task.guide_id || !Array.isArray(picked) || !picked.length) return none;
   const guide = await env.DB.prepare('SELECT body FROM guides WHERE id = ?').bind(task.guide_id).first();
   const items = parseFollowups(guide?.body);
-  const wanted = [...new Set(picked.map(Number))].map((i) => items[i]).filter(Boolean);
-  const created = [];
-  const skipped = [];
-  const stmts = [];
-  for (const item of wanted) {
-    const title = item.todo.slice(0, 160);
-    const dup = await env.DB.prepare("SELECT id FROM tasks WHERE status = 'open' AND title = ? COLLATE NOCASE").bind(title).first();
-    if (dup || created.includes(title)) { skipped.push(title); continue; }
-    created.push(title);
-    stmts.push(env.DB.prepare(
-      `INSERT INTO tasks (title, description, priority, due_date, created_by) VALUES (?, ?, 'high', ?, ?)`
-    ).bind(title, `From "${task.title}" on ${day}: ${item.label}${item.where ? ' at ' + item.where : ''}.`, addDays(day, 1), user.id));
+  const groups = new Map();
+  for (const i of new Set(picked.map(Number))) {
+    const item = items[i];
+    if (!item) continue;
+    const action = item.action.trim().slice(0, 120);
+    const key = action.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { action, stops: [] });
+    const stop = (item.where || 'General').slice(0, 80);
+    if (!groups.get(key).stops.includes(stop)) groups.get(key).stops.push(stop);
   }
-  return { stmts, created, skipped };
+  const { stmts, created, updated } = none;
+  for (const g of groups.values()) {
+    const open = await env.DB.prepare(
+      "SELECT id, followup_stops FROM tasks WHERE status = 'open' AND followup_key = ? COLLATE NOCASE ORDER BY id DESC LIMIT 1"
+    ).bind(g.action).first();
+    const before = open ? parseStops(open.followup_stops) : [];
+    const stops = [...before, ...g.stops.filter((x) => !before.includes(x))];
+    if (open && stops.length === before.length) continue; // nothing new for this supply
+    const title = followupTitle(g.action, stops);
+    const description = `Stops:\n${stops.map((x) => `• ${x}`).join('\n')}\n\nLast added from "${task.title}" on ${day}.`;
+    if (open) {
+      stmts.push(env.DB.prepare('UPDATE tasks SET title = ?, description = ?, followup_stops = ?, updated_at = ? WHERE id = ?')
+        .bind(title, description, JSON.stringify(stops), nowIso(), open.id));
+      updated.push(title);
+    } else {
+      stmts.push(env.DB.prepare(
+        `INSERT INTO tasks (title, description, priority, due_date, created_by, followup_key, followup_stops)
+         VALUES (?, ?, 'high', NULL, ?, ?, ?)`
+      ).bind(title, description, user.id, g.action, JSON.stringify(stops)));
+      created.push(title);
+    }
+  }
+  return { stmts, created, updated };
 }
 
 async function completeTask(env, user, id, { notes, followups } = {}) {
@@ -532,7 +581,7 @@ async function completeTask(env, user, id, { notes, followups } = {}) {
     stmts.push(env.DB.prepare("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?").bind(nowIso(), id));
   }
   await env.DB.batch(stmts);
-  return { ok: true, next_due: next, created: fu.created, skipped: fu.skipped };
+  return { ok: true, next_due: next, created: fu.created, updated: fu.updated };
 }
 
 route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => {
