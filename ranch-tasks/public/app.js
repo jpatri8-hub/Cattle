@@ -471,8 +471,8 @@ async function viewTasks() {
   const groups = [
     ['Overdue', shown.filter((t) => t.due_date && t.due_date < S.today), 'late'],
     ['Today', shown.filter((t) => t.due_date === S.today)],
-    ['Next 7 days', shown.filter((t) => t.due_date > S.today && t.due_date <= week)],
     ['Anytime', shown.filter((t) => !t.due_date)],
+    ['Next 7 days', shown.filter((t) => t.due_date > S.today && t.due_date <= week)],
     ['Later', shown.filter((t) => t.due_date > week)],
   ];
   const collapsedLater = store.get('showLater', false);
@@ -508,6 +508,9 @@ async function viewTask(id) {
   const late = t.due_date && t.due_date < S.today;
   const chkKey = `chk:${t.id}:${t.due_date || 'any'}`;
   const prop = t.property_id ? { id: t.property_id, name: t.property_name, photo_updated_at: t.property_photo_at } : null;
+  const asList = (v) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+  const stops = asList(t.followup_stops);
+  const doneStops = new Set(asList(t.followup_done));
   main.innerHTML = `
     <p><a href="#/">← Tasks</a></p>
     <div class="card">
@@ -520,7 +523,12 @@ async function viewTask(id) {
         ${t.priority === 'high' ? '<span class="tag high">High priority</span>' : ''}
         ${t.est_minutes ? `<span>~${t.est_minutes} min</span>` : ''}
       </div>
-      ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ''}
+      ${stops.length ? `<div class="stops-box">
+          <div class="row between"><b>Stops</b><span class="small muted" id="stopCount">${doneStops.size} of ${stops.length} done</span></div>
+          <ul class="checklist stop-list">${stops.map((x, i) => `<li><label><input type="checkbox" data-stop="${i}" ${doneStops.has(x) ? 'checked' : ''}
+            ${t.status === 'open' ? '' : 'disabled'}> <span>${esc(x)}</span></label></li>`).join('')}</ul>
+          <p class="muted small" style="margin:4px 0 0">${esc((t.description || '').split('\n').pop())}</p></div>`
+        : t.description ? `<p class="desc">${esc(t.description)}</p>` : ''}
       ${t.status === 'open' ? '<button class="primary big" id="doneBtn" style="margin-top:8px">✓ Mark complete</button>' : ''}
     </div>
     ${prop || t.location_name ? `<div class="card"><div class="row between"><h2 style="margin:0">📍 ${esc(prop ? prop.name : t.location_name)}</h2>
@@ -531,7 +539,7 @@ async function viewTask(id) {
       </div>` : ''}
     ${t.guide ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
         <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
-        <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked “needs” become to-dos (one per supply) when you mark this task complete.' : ''}</p>
+        <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked needs become one to-do per supply when you mark this complete.' : ''}</p>
         <div class="guide-body" id="guideBody">${renderGuide(t.guide.body, { checklist: true })}</div></div>` : ''}
     <div class="card"><h2 style="margin-top:0">History</h2>
       ${t.history.length ? t.history.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
@@ -541,6 +549,7 @@ async function viewTask(id) {
         ${c.review_note ? `<div class="small"><b>${esc(c.reviewer_name || 'Owner')}:</b> ${esc(c.review_note)}</div>` : ''}
       </div>`).join('') : '<p class="muted">Not completed yet.</p>'}
     </div>
+    ${t.status === 'open' ? '<button class="primary big" id="doneBtn2" style="margin-bottom:12px">✓ Mark complete</button>' : ''}
     <p class="muted small">Created by ${esc(t.created_by_name || '—')}</p>
     <div class="row">
       ${canEdit ? `<a class="btn" href="#/task/${t.id}/edit">Edit</a>` : ''}
@@ -548,10 +557,21 @@ async function viewTask(id) {
       ${canEdit && t.status === 'open' ? '<button class="danger" id="archiveBtn">Archive</button>' : ''}
       ${canEdit && t.status !== 'open' ? '<button id="reopenBtn">Reopen</button>' : ''}
     </div>`;
-  $('#doneBtn')?.addEventListener('click', () => completeTask(t, render,
-    $$('#guideBody input[data-followup]:checked').map((x) => x.dataset.followup)));
+  const markDone = () => completeTask(t, render,
+    $$('#guideBody input[data-followup]:checked').map((x) => x.dataset.followup));
+  $('#doneBtn')?.addEventListener('click', markDone);
+  $('#doneBtn2')?.addEventListener('click', markDone);
+  $$('input[data-stop]').forEach((cb) => cb.addEventListener('change', async () => {
+    try {
+      const r = await api('PUT', `/tasks/${t.id}/stops`, { stop: stops[Number(cb.dataset.stop)], done: cb.checked });
+      $('#stopCount').textContent = `${r.done.length} of ${stops.length} done`;
+    } catch (err) {
+      cb.checked = !cb.checked;
+      toast(err.message, true);
+    }
+  }));
   const checked = new Set(store.get(chkKey, []));
-  $$('#guideBody input[type=checkbox]').forEach((cb) => {
+  $$('#guideBody input[data-step]').forEach((cb) => {
     cb.checked = checked.has(cb.dataset.step);
     cb.addEventListener('change', () => {
       cb.checked ? checked.add(cb.dataset.step) : checked.delete(cb.dataset.step);
