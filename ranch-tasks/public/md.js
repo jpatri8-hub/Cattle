@@ -57,10 +57,9 @@ export function renderGuide(text, { checklist = false, idPrefix = 'step' } = {})
       if (list !== 'fu') { closeList(); out.push('<ul class="checklist followups">'); list = 'fu'; }
       const i = followup++;
       const label = inline(esc(fu[1]));
-      const todo = esc(fu[2]);
       out.push(checklist
-        ? `<li><label><input type="checkbox" data-followup="${i}"> <span>${label} <small class="muted">→ to-do: ${todo}</small></span></label></li>`
-        : `<li>☐ ${label} <small class="muted">→ to-do: ${todo}</small></li>`);
+        ? `<li><label><input type="checkbox" data-followup="${i}"> <span>${label}</span></label></li>`
+        : `<li>☐ ${label}</li>`);
       continue;
     }
     if ((m = t.match(HEADING_RE))) {

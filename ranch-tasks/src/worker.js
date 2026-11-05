@@ -490,6 +490,22 @@ route('PUT', '/api/tasks/:id', async ({ env, user, params, body }) => {
   return json({ ok: true });
 });
 
+// Tick off stops on a grouped follow-up to-do ("Put out hay: Sharpers, ...").
+// Saved on the task so everyone sees the same progress.
+route('PUT', '/api/tasks/:id/stops', async ({ env, user, params, body }) => {
+  const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(Number(params.id)).first();
+  if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
+  const stops = parseStops(task.followup_stops);
+  const stop = String(body.stop ?? '');
+  if (!stops.includes(stop)) throw new HttpError(400, 'That stop is not on this to-do');
+  const done = new Set(parseStops(task.followup_done));
+  body.done === false ? done.delete(stop) : done.add(stop);
+  const list = stops.filter((x) => done.has(x));
+  await env.DB.prepare('UPDATE tasks SET followup_done = ?, updated_at = ? WHERE id = ?')
+    .bind(JSON.stringify(list), nowIso(), task.id).run();
+  return json({ ok: true, done: list });
+});
+
 route('DELETE', '/api/tasks/:id', async ({ env, user, params }) => {
   const id = Number(params.id);
   await loadTaskForEdit(env, user, id);

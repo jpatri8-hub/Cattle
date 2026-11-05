@@ -228,7 +228,16 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
 .followup-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
 .followup-list .inline-check { align-items: flex-start; }
-.guide-body .followups small { white-space: nowrap; }
+.stops-box { background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.stop-list { list-style: none; padding: 0; margin: 6px 0 0; }
+.stop-list label { display: flex; gap: 10px; align-items: center; font-weight: 400; font-size: 1rem; padding: 5px 0; }
+.stop-list input:checked + span { text-decoration: line-through; color: var(--muted); }
+/* Route stops and their needs: needs indented one step under each stop, kept compact. */
+.guide-body .followups { padding-left: 2.2rem; margin: 0 0 .2rem; display: flex; flex-wrap: wrap; gap: 0 18px; }
+.guide-body .followups li { margin: 0; }
+.guide-body .followups label { padding: 3px 0; font-size: .95rem; align-items: center; gap: 6px; }
+.guide-body .followups input[type=checkbox] { width: 20px; height: 20px; }
+.guide-body h3.stop, .guide-body h4.stop, .guide-body h5.stop { margin: .5rem 0 0; }
 .guide-body h3.stop label, .guide-body h4.stop label, .guide-body h5.stop label {
   display: flex; gap: 10px; align-items: center; font-size: inherit; font-weight: 700; margin: 0;
 }
