@@ -90,6 +90,7 @@ export function nextDueAfterCompletion(task, today) {
 }
 
 export function describeRule(rule) {
+  if (rule.repeat_on_complete) return 'Again as soon as it’s done';
   const n = Math.max(1, rule.recur_interval || 1);
   const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   switch (rule.recur_type) {

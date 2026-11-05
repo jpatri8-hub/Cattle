@@ -389,7 +389,7 @@ async function completeTask(task, after, checked = null) {
     closeModal();
     const made = r.created?.length ? ` New to-do: ${r.created.join('; ')}.` : '';
     const dup = r.updated?.length ? ` Added stops to: ${r.updated.join('; ')}.` : '';
-    toast((r.next_due ? `Done! Next due ${fmtDay(r.next_due)}.` : 'Done!') + made + dup);
+    toast((r.next_due ? `Done! Next due ${fmtDay(r.next_due)}.` : r.repeated ? 'Done! It’s back on the list for next time.' : 'Done!') + made + dup);
     refreshBadge();
     after?.();
   }));
@@ -438,7 +438,8 @@ function taskRow(t) {
   const late = t.due_date && t.due_date < S.today;
   const meta = [];
   if (t.due_date) meta.push(`<span class="${late ? 'tag late' : ''}">${late ? 'Due ' : ''}${fmtDay(t.due_date)}</span>`);
-  if (t.recur_type !== 'none') meta.push(`<span>↻ ${esc(describeRule(t))}</span>`);
+  if (!t.due_date && t.rank) meta.unshift(`<span class="tag rank">#${Number(t.rank)}</span>`);
+  if (t.recur_type !== 'none' || t.repeat_on_complete) meta.push(`<span>↻ ${esc(describeRule(t))}</span>`);
   meta.push(`<span>👤 ${esc(t.assigned_name || 'Anyone')}</span>`);
   if (t.priority === 'high') meta.push('<span class="tag high">High</span>');
   if (t.guide_id) meta.push('<span title="Has instructions">📘 Guide</span>');
@@ -446,10 +447,10 @@ function taskRow(t) {
     meta.push(`<span>📍 ${esc([t.property_name, t.location_name].filter(Boolean).join(' · '))}</span>`);
   }
   if (t.est_minutes) meta.push(`<span>~${t.est_minutes} min</span>`);
-  return `<div class="task">
-    <button class="done-btn" data-done="${t.id}" aria-label="Mark ${esc(t.title)} done" title="Mark done">✓</button>
-    <div class="grow"><a class="title" href="#/task/${t.id}">${esc(t.title)}</a><div class="meta">${meta.join('')}</div></div>
-  </div>`;
+  return `<a class="task" href="#/task/${t.id}">
+    <div class="grow"><span class="title">${esc(t.title)}</span><div class="meta">${meta.join('')}</div></div>
+    <span class="chev" aria-hidden="true">›</span>
+  </a>`;
 }
 
 async function viewTasks() {
@@ -497,16 +498,13 @@ async function viewTasks() {
         <a href="#/task/${c.task_id}">✓ ${esc(c.task_title)}</a><span class="muted">${esc(c.user_name)} · ${fmtTime(c.completed_at)}</span></div>`).join('')}</div>` : ''}`;
   $$('[data-filter]').forEach((b) => b.addEventListener('click', () => { store.set('taskFilter', b.dataset.filter); render(); }));
   $('#showLater')?.addEventListener('click', () => { store.set('showLater', true); render(); });
-  $$('[data-done]').forEach((b) => b.addEventListener('click', () => {
-    completeTask(tasks.find((t) => t.id === Number(b.dataset.done)), render);
-  }));
 }
 
 async function viewTask(id) {
   const t = await api('GET', `/tasks/${id}`);
   const canEdit = isOwner() || t.created_by === S.user.id;
   const late = t.due_date && t.due_date < S.today;
-  const chkKey = `chk:${t.id}:${t.due_date || 'any'}`;
+  const chkKey = `chk:${t.id}:${t.due_date || 'any'}:${t.last_completed_at || ''}`;
   const prop = t.property_id ? { id: t.property_id, name: t.property_name, photo_updated_at: t.property_photo_at } : null;
   const asList = (v) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
   const stops = asList(t.followup_stops);
@@ -521,6 +519,7 @@ async function viewTask(id) {
         <span>↻ ${esc(describeRule(t))}</span>
         <span>👤 ${esc(t.assigned_name || 'Anyone')}</span>
         ${t.priority === 'high' ? '<span class="tag high">High priority</span>' : ''}
+        ${!t.due_date && t.rank ? `<span class="tag rank">Rank #${Number(t.rank)}</span>` : ''}
         ${t.est_minutes ? `<span>~${t.est_minutes} min</span>` : ''}
       </div>
       ${stops.length ? `<div class="stops-box">
@@ -541,6 +540,7 @@ async function viewTask(id) {
         <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
         <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked needs become one to-do per supply when you mark this complete.' : ''}</p>
         <div class="guide-body" id="guideBody">${renderGuide(t.guide.body, { checklist: true })}</div></div>` : ''}
+    ${t.status === 'open' ? '<button class="primary big" id="doneBtn2" style="margin-bottom:12px">✓ Mark complete</button>' : ''}
     <div class="card"><h2 style="margin-top:0">History</h2>
       ${t.history.length ? t.history.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
         <div class="row between"><b>${esc(c.user_name)}</b><span class="tag ${c.review_status}">${c.review_status}</span></div>
@@ -549,7 +549,6 @@ async function viewTask(id) {
         ${c.review_note ? `<div class="small"><b>${esc(c.reviewer_name || 'Owner')}:</b> ${esc(c.review_note)}</div>` : ''}
       </div>`).join('') : '<p class="muted">Not completed yet.</p>'}
     </div>
-    ${t.status === 'open' ? '<button class="primary big" id="doneBtn2" style="margin-bottom:12px">✓ Mark complete</button>' : ''}
     <p class="muted small">Created by ${esc(t.created_by_name || '—')}</p>
     <div class="row">
       ${canEdit ? `<a class="btn" href="#/task/${t.id}/edit">Edit</a>` : ''}
@@ -606,6 +605,7 @@ const PRESETS = {
   yearly: ['yearly', 1, ''],
 };
 function presetFor(t) {
+  if (t.repeat_on_complete) return 'continuous';
   for (const [k, [type, n, wd]] of Object.entries(PRESETS)) {
     if (t.recur_type === type && (t.recur_interval || 1) === n && (t.recur_weekdays || '') === wd) return k;
   }
@@ -674,7 +674,7 @@ async function viewTaskForm(id, query) {
       </div>
       <div class="grid2">
         <div class="field"><label>Repeats</label><select name="preset" id="preset">
-          <option value="none">One time</option><option value="daily">Every day</option><option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="none">One time</option><option value="continuous">Again as soon as it’s done (anytime)</option><option value="daily">Every day</option><option value="weekdays">Weekdays (Mon–Fri)</option>
           <option value="mwf">Mon / Wed / Fri</option><option value="tth">Tue / Thu</option>
           <option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Every month</option>
           <option value="quarterly">Quarterly</option><option value="twice">Twice a year</option><option value="yearly">Once a year</option>
@@ -694,6 +694,9 @@ async function viewTaskForm(id, query) {
         </div></div>
       </div>
       <p class="muted small" id="recurHelp"></p>
+      <div class="field" id="rankField"><label>Rank in the Anytime list</label>
+        <input type="number" name="rank" min="1" max="999" inputmode="numeric" placeholder="1 = top" value="${esc(t.rank ?? '')}">
+        <p class="muted small" style="margin:4px 0 0">For tasks with no due date: 1 shows first, then 2, 3… Blank = after the ranked ones.</p></div>
       <div class="field"><label>Estimated time (minutes)</label><input type="number" name="est_minutes" min="0" inputmode="numeric" value="${esc(t.est_minutes ?? '')}"></div>
       <div class="field"><label>Property</label><select name="property_id" id="propSel">
         <option value="">— none —</option>
@@ -709,16 +712,19 @@ async function viewTaskForm(id, query) {
   $('#preset').value = preset;
   const syncRecur = () => {
     const p = $('#preset').value;
+    const anytimeRepeat = p === 'continuous';
     $('#custom').classList.toggle('hidden', p !== 'custom');
     $('#wdField').classList.toggle('hidden', form.recur_type.value !== 'weekly');
-    $('#dueLabel').textContent = p === 'none' ? 'Due date' : 'Starts on';
-    // Recurring tasks always need a start date.
+    $('#dueLabel').textContent = anytimeRepeat ? 'Due date (always anytime)' : p === 'none' ? 'Due date' : 'Starts on';
+    // Recurring tasks always need a start date; repeat-when-done tasks never have one.
     $('#noDueWrap').classList.toggle('hidden', p !== 'none');
-    const noDue = p === 'none' && $('#noDue').checked;
+    const noDue = anytimeRepeat || (p === 'none' && $('#noDue').checked);
     form.due_date.disabled = noDue;
     if (noDue) form.due_date.value = '';
     else if (!form.due_date.value) form.due_date.value = S.today;
-    $('#recurHelp').textContent = p === 'none' ? '' : 'When marked complete, the task moves itself to the next due date.';
+    $('#rankField').classList.toggle('hidden', !noDue);
+    $('#recurHelp').textContent = anytimeRepeat ? 'When marked complete, it goes straight back on the list, due anytime.'
+      : p === 'none' ? '' : 'When marked complete, the task moves itself to the next due date.';
   };
   $('#preset').addEventListener('change', syncRecur);
   $('#noDue').addEventListener('change', syncRecur);
@@ -740,7 +746,10 @@ async function viewTaskForm(id, query) {
     const d = formData(form);
     if (form.due_date.disabled) d.due_date = '';
     const p = d.preset;
-    if (p !== 'custom') {
+    d.repeat_on_complete = p === 'continuous';
+    if (p === 'continuous') {
+      [d.recur_type, d.recur_interval, d.recur_weekdays] = PRESETS.none;
+    } else if (p !== 'custom') {
       [d.recur_type, d.recur_interval, d.recur_weekdays] = PRESETS[p];
     } else {
       d.recur_weekdays = $$('input[name=wd]:checked', form).map((x) => x.value).join(',');

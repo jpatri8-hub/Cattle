@@ -8,8 +8,8 @@ database), so hosting costs nothing.
 
 | Need | How it works |
 |---|---|
-| **Task list** | Tasks are grouped as Overdue, Today, Next 7 days, Anytime and Later. Tap ✓ to mark one done. Hands only see tasks that are assigned to them or to no one; tasks assigned to another hand are hidden from them. The owner can filter by **Mine**, **Unassigned**, **Hands** (assigned to any hand) or **All**. |
-| **Recurring tasks** | Repeat every day, weekdays, **Mon/Wed/Fri**, **Tue/Thu**, weekly, every 2 weeks, monthly, quarterly, **twice a year**, yearly, or a custom rule like "every 3 days". When someone completes a recurring task it moves to the next due date by itself, and missed days don't stack up. One-time tasks close when they're done. |
+| **Task list** | Tasks are grouped as Overdue, Today, Anytime, Next 7 days and Later; tap a task to open it and mark it complete from there. The owner can **rank** tasks with no due date (1, 2, 3…); ranked tasks sit at the top of Anytime with a #1, #2 badge. Hands only see tasks that are assigned to them or to no one. The owner can filter by **Mine**, **Unassigned**, **Hands** (assigned to any hand) or **All**. |
+| **Recurring tasks** | Repeat every day, weekdays, **Mon/Wed/Fri**, **Tue/Thu**, weekly, every 2 weeks, monthly, quarterly, **twice a year**, yearly, a custom rule like "every 3 days", or **Again as soon as it's done**: a task with no due date that goes straight back on the list each time it's completed (used for the owner's **Property check**). When someone completes a recurring task it moves to the next due date by itself, and missed days don't stack up. One-time tasks close when they're done. |
 | **Reusable instructions** | **Guides** hold how-to notes, such as how to hook up and run the bush hog, written once and attached to any number of tasks. When a hand opens the task, the guide's steps show as tick-boxes. Lines that start with `!` show as yellow safety callouts. A heading written `## [ ] Sharpers` gets its own tick-box, for marking off stops as you go. Guides can also have **follow-ups**: a line like `[ ] Needs hay -> Put out hay` under a stop shows a tick-box. When the task is marked complete, ticked follow-ups are grouped into **one high-priority to-do per supply**, open to anyone with **no due date**, e.g. "Put out hay: Sharpers, Lake field". If that to-do is still open, new stops are added to it, and the to-do has a tick-box for each stop so everyone can see how far along it is. Only the owner creates guides, and the owner can **archive** a guide to hide it from the guide list and task form (tasks already using it keep it; restore it from **Guides → Archived guides**). Starter guides: bush hog, daily water/feed check, and the **M-W-F** and **T-TH feed routes**, each attached to a recurring route task. |
 | **Roles** | **Owner** and **Hand**, and you can have several of each. Everyone can create tasks, write guides and mark work complete. A hand's new-task form is just **What needs doing?** and **Estimated time**, with **Save** or **Save & mark complete** (for jobs they already did). Their tasks are due today and open to anyone. Owners get the full form and can edit anything, review completed work, manage people, see everyone's hours, and run payroll. |
 | **Owner review** | Each completion lands in **More → Review** with who did it, when, whether it was late, and the hand's notes. You can **Approve** it, or **Flag** it with a note, which also puts a one-time task back on the list. "Approve all" clears the queue. |
@@ -93,6 +93,16 @@ changed by hand, auto clock-outs).
 
 The email goes out at 8 am ranch time (the time zone in Settings) on the 1st
 (for the 16th–end of last month) and the 16th (for the 1st–15th).
+
+## Keeping years of history
+
+Nothing is ever thrown away: completions, punches, PTO and the time change log
+all stay. That's fine on the free plan. A test with five years of made-up
+history (55,000 completions, 9,000 punches, 9,000 finished tasks) came to
+about **10 MB** of the 5 GB D1 allows. Aerial photos are the biggest items, at
+under 2 MB each. Every screen you use daily reads through an index, so pages
+don't slow down as history grows, and the Finished & archived list shows the
+newest 200.
 
 ## Passwords
 

@@ -350,9 +350,13 @@ const TASK_SELECT = `SELECT t.*, a.name AS assigned_name, c.name AS created_by_n
 route('GET', '/api/tasks', async ({ env, url, user }) => {
   const status = url.searchParams.get('status') || 'open';
   if (!['open', 'done', 'archived'].includes(status)) throw new HttpError(400, 'Bad status');
+  const order = status === 'open'
+    ? `t.due_date IS NULL, t.due_date, t.rank IS NULL, t.rank,
+       CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.title LIMIT 1000`
+    // Finished and archived tasks pile up over the years; show the newest.
+    : 't.updated_at DESC LIMIT 200';
   const { results } = await env.DB.prepare(
-    `${TASK_SELECT} WHERE t.status = ?${visibleSql(user)} ORDER BY t.due_date IS NULL, t.due_date,
-     CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.title LIMIT 1000`
+    `${TASK_SELECT} WHERE t.status = ?${visibleSql(user)} ORDER BY ${order}`
   ).bind(status).all();
   return json(results);
 });
@@ -409,8 +413,17 @@ async function taskFields(env, body, settings) {
     est_minutes: optInt(body.est_minutes, 0, 100000),
     location_name: str(body.location_name, 120),
     property_id: optInt(body.property_id, 1, 1e9),
+    rank: optInt(body.rank, 1, 999),
+    repeat_on_complete: [true, 1, '1', 'true'].includes(body.repeat_on_complete) ? 1 : 0,
   };
   t.marks = t.property_id ? parseMarks(body.marks) : null;
+  // "Again as soon as it's done": a one-time, anytime task that never closes.
+  if (t.repeat_on_complete) {
+    t.recur_type = 'none';
+    t.recur_interval = 1;
+    t.recur_weekdays = '';
+    t.due_date = null;
+  }
   if (t.recur_type !== 'none') {
     // Recurring tasks need a start date; the schedule is computed from it.
     if (!t.due_date) t.due_date = today(settings);
@@ -421,6 +434,8 @@ async function taskFields(env, body, settings) {
   } else {
     t.recur_anchor = null;
   }
+  // Ranking only orders tasks with no due date.
+  if (t.due_date) t.rank = null;
   if (t.assigned_to) {
     const ok = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(t.assigned_to).first();
     if (!ok) throw new HttpError(400, 'Unknown assignee');
@@ -447,10 +462,11 @@ route('POST', '/api/tasks', async ({ env, user, body }) => {
   const t = await taskFields(env, user.role === 'owner' ? body : handTaskBody(user, body, settings), settings);
   const res = await env.DB.prepare(
     `INSERT INTO tasks (title, description, guide_id, assigned_to, priority, due_date, recur_type, recur_interval,
-       recur_weekdays, recur_anchor, est_minutes, location_name, property_id, marks, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       recur_weekdays, recur_anchor, est_minutes, location_name, property_id, marks, rank, repeat_on_complete, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(t.title, t.description, t.guide_id, t.assigned_to, t.priority, t.due_date, t.recur_type, t.recur_interval,
-    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks, user.id).run();
+    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks, t.rank,
+    t.repeat_on_complete, user.id).run();
   const id = res.meta.last_row_id;
   // "Save & mark complete": record the completion in the same request.
   if (body.complete) return json({ id, ...(await completeTask(env, user, id, body)) });
@@ -483,10 +499,11 @@ route('PUT', '/api/tasks/:id', async ({ env, user, params, body }) => {
   await env.DB.prepare(
     `UPDATE tasks SET title = ?, description = ?, guide_id = ?, assigned_to = ?, priority = ?, due_date = ?,
        recur_type = ?, recur_interval = ?, recur_weekdays = ?, recur_anchor = ?, est_minutes = ?,
-       location_name = ?, property_id = ?, marks = ?, status = ?, updated_at = ? WHERE id = ?`
+       location_name = ?, property_id = ?, marks = ?, rank = ?, repeat_on_complete = ?, status = ?, updated_at = ?
+       WHERE id = ?`
   ).bind(t.title, t.description, t.guide_id, t.assigned_to, t.priority, t.due_date, t.recur_type, t.recur_interval,
-    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks,
-    status, nowIso(), id).run();
+    t.recur_weekdays, t.recur_anchor, t.est_minutes, t.location_name, t.property_id, t.marks, t.rank,
+    t.repeat_on_complete, status, nowIso(), id).run();
   return json({ ok: true });
 });
 
@@ -590,14 +607,19 @@ async function completeTask(env, user, id, { notes, followups } = {}) {
   const fu = await followupStatements(env, user, task, followups, day);
   stmts.push(...fu.stmts);
   let next = null;
+  let repeated = false;
   if (task.recur_type !== 'none') {
     next = nextDueAfterCompletion(task, day);
     stmts.push(env.DB.prepare('UPDATE tasks SET due_date = ?, updated_at = ? WHERE id = ?').bind(next, nowIso(), id));
+  } else if (task.repeat_on_complete) {
+    // Straight back on the list, due anytime; its history stays on the task.
+    repeated = true;
+    stmts.push(env.DB.prepare('UPDATE tasks SET followup_done = NULL, updated_at = ? WHERE id = ?').bind(nowIso(), id));
   } else {
     stmts.push(env.DB.prepare("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?").bind(nowIso(), id));
   }
   await env.DB.batch(stmts);
-  return { ok: true, next_due: next, created: fu.created, updated: fu.updated };
+  return { ok: true, next_due: next, repeated, created: fu.created, updated: fu.updated };
 }
 
 route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => {
