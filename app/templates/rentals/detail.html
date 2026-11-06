@@ -24,8 +24,8 @@
         <tr><th>End (planned)</th><td>{{ rental.end_date.strftime('%m-%d-%Y') }}</td></tr>
         <tr><th>Actual Return</th><td>{{ rental.actual_return_date.strftime('%m-%d-%Y') if rental.actual_return_date else "-" }}</td></tr>
         {% if current_user.is_owner %}
-        <tr><th>Rate</th><td>{{ "$%.2f"|format(rental.rate) if rental.rate else "-" }} ({{ rental.rate_type }})</td></tr>
-        <tr><th>Deposit</th><td>{{ "$%.2f"|format(rental.deposit_amount) if rental.deposit_amount else "-" }} {% if rental.deposit_returned %}(returned){% endif %}</td></tr>
+        <tr><th>Rate</th><td>{{ rental.rate|usd }} ({{ rental.rate_type }})</td></tr>
+        <tr><th>Deposit</th><td>{{ rental.deposit_amount|usd }} {% if rental.deposit_returned %}(returned){% endif %}</td></tr>
         {% endif %}
       </table>
       {% if rental.contract_notes %}<p class="mt-2 mb-0"><strong>Contract Notes:</strong> {{ rental.contract_notes }}</p>{% endif %}

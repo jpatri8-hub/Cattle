@@ -27,7 +27,7 @@
             <td><a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.invoice_number }}</a></td>
             <td>{{ s.sale_date }}</td>
             <td>{{ s.lines|length }}</td>
-            <td>${{ "%.2f"|format(s.total_price) }}</td>
+            <td>{{ s.total_price|usd }}</td>
           </tr>
           {% else %}<tr><td colspan="4" class="text-muted">No purchases yet.</td></tr>{% endfor %}
         </tbody>

@@ -54,9 +54,9 @@
       <tr>
         <td><a href="{{ url_for('reports.type_detail', type_id=m.type_id, year=year) }}">{{ type_name }}</a></td>
         <td>{{ m.count }}</td>
-        <td>${{ "%.2f"|format(m.cost) }}</td>
-        <td>${{ "%.2f"|format(m.revenue) }}</td>
-        <td class="{{ 'text-success' if m.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(m.net) }}</td>
+        <td>{{ m.cost|usd }}</td>
+        <td>{{ m.revenue|usd }}</td>
+        <td class="{{ 'text-success' if m.net >= 0 else 'text-danger' }}">{{ m.net|usd }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -64,9 +64,9 @@
       <tr class="fw-bold border-top">
         <td>Total</td>
         <td>{{ net_margin_totals.count }}</td>
-        <td>${{ "%.2f"|format(net_margin_totals.cost) }}</td>
-        <td>${{ "%.2f"|format(net_margin_totals.revenue) }}</td>
-        <td class="{{ 'text-success' if net_margin_totals.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(net_margin_totals.net) }}</td>
+        <td>{{ net_margin_totals.cost|usd }}</td>
+        <td>{{ net_margin_totals.revenue|usd }}</td>
+        <td class="{{ 'text-success' if net_margin_totals.net >= 0 else 'text-danger' }}">{{ net_margin_totals.net|usd }}</td>
       </tr>
     </tfoot>
   </table>
@@ -88,8 +88,8 @@
       <tr class="{{ 'extra-bull-row d-none' if loop.index > 5 }}">
         <td><a href="{{ url_for('animals.view_animal', animal_id=bull.id, back=request.full_path) }}">{{ bull.display_id }}</a></td>
         <td>{{ "On Farm" if bull.is_active else bull.departure_reason }}</td>
-        <td>${{ "%.2f"|format(revenue) }}</td>
-        <td>${{ "%.2f"|format(cost) }}</td>
+        <td>{{ revenue|usd }}</td>
+        <td>{{ cost|usd }}</td>
       </tr>
       {% else %}<tr><td colspan="4" class="text-muted">No bulls yet.</td></tr>{% endfor %}
     </tbody>

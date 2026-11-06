@@ -65,7 +65,7 @@
         {% endif %}
         {% if current_user.is_owner %}
         <tr><th>Purchase Date</th><td>{{ animal.purchase_date or "-" }}</td></tr>
-        <tr><th>Purchase Price</th><td>{{ "$%.2f"|format(animal.purchase_price) if animal.purchase_price else "-" }}</td></tr>
+        <tr><th>Purchase Price</th><td>{{ animal.purchase_price|usd }}</td></tr>
         {% endif %}
       </table>
       {% if animal.notes %}<p class="mt-2 mb-0"><strong>Notes:</strong> {{ animal.notes }}</p>{% endif %}
