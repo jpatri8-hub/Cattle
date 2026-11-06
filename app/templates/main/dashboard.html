@@ -126,13 +126,13 @@
   {% if current_user.is_owner %}
   <div class="col-md-6 mb-4">
     <div class="card card-dashboard p-3">
-      <h5>Recent Sales <span class="text-muted small">(YTD total: ${{ "%.2f"|format(sales_this_year_total) }})</span></h5>
+      <h5>Recent Sales <span class="text-muted small">(YTD total: {{ sales_this_year_total|usd }})</span></h5>
       {% if recent_sales %}
       <ul class="list-group list-group-flush">
         {% for s in recent_sales %}
         <li class="list-group-item d-flex justify-content-between">
           <a href="{{ url_for('sales.view_sale', sale_id=s.id) }}">{{ s.invoice_number }} - {{ s.buyer.name }}</a>
-          <span>${{ "%.2f"|format(s.total_price) }}</span>
+          <span>{{ s.total_price|usd }}</span>
         </li>
         {% endfor %}
       </ul>

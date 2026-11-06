@@ -60,4 +60,13 @@ def create_app(config_class=Config):
         from datetime import date
         return {"today": date.today()}
 
+    @app.template_filter("usd")
+    def format_usd(value):
+        """$1,234.56 with a thousands separator; negatives render as -$1,234.56."""
+        if value is None:
+            return "-"
+        value = float(value)
+        sign = "-" if value < 0 else ""
+        return f"{sign}${abs(value):,.2f}"
+
     return app

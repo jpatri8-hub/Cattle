@@ -18,7 +18,7 @@
       <table class="table table-sm mb-0">
         <tr><th>Buyer</th><td>{{ sale.buyer.name }} &middot; {{ sale.buyer.phone or "" }} {{ sale.buyer.email or "" }}</td></tr>
         <tr><th>Sale Date</th><td>{{ sale.sale_date }}</td></tr>
-        <tr><th>Total Price</th><td>${{ "%.2f"|format(sale.total_price) }}</td></tr>
+        <tr><th>Total Price</th><td>{{ sale.total_price|usd }}</td></tr>
         <tr><th>Payment Method</th><td>{{ sale.payment_method or "-" }}</td></tr>
         <tr><th>Notes</th><td>{{ sale.notes or "-" }}</td></tr>
       </table>
@@ -31,7 +31,7 @@
         <thead><tr><th>Sex</th><th>Count</th><th>Avg Price</th><th>Avg Weight</th></tr></thead>
         <tbody>
           {% for sex, a in averages.items() %}
-          <tr><td>{{ sex.capitalize() }}</td><td>{{ a.count }}</td><td>{{ "$%.2f"|format(a.avg_price) if a.avg_price else "-" }}</td><td>{{ "%.1f"|format(a.avg_weight) if a.avg_weight else "-" }}</td></tr>
+          <tr><td>{{ sex.capitalize() }}</td><td>{{ a.count }}</td><td>{{ a.avg_price|usd }}</td><td>{{ "%.1f"|format(a.avg_weight) if a.avg_weight else "-" }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -48,7 +48,7 @@
       <tr>
         <td><a href="{{ url_for('animals.view_animal', animal_id=line.animal_id) }}">{{ line.animal.display_id }}</a></td>
         <td>{{ line.animal.animal_type.name if line.animal.animal_type else "-" }}</td>
-        <td>${{ "%.2f"|format(line.price) }}</td>
+        <td>{{ line.price|usd }}</td>
         <td>{{ line.weight or "-" }}</td>
       </tr>
       {% endfor %}

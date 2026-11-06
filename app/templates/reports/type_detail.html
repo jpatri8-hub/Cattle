@@ -12,9 +12,9 @@
     <tr>
       <td><a href="{{ url_for('animals.view_animal', animal_id=r.animal.id, back=request.full_path) }}">{{ r.animal.display_id }}</a></td>
       <td>{% if r.animal.is_active %}On Farm{% else %}Left {{ r.animal.departure_date }}{% endif %}</td>
-      <td>${{ "%.2f"|format(r.cost) }}</td>
-      <td>${{ "%.2f"|format(r.revenue) }}</td>
-      <td class="{{ 'text-success' if r.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(r.net) }}</td>
+      <td>{{ r.cost|usd }}</td>
+      <td>{{ r.revenue|usd }}</td>
+      <td class="{{ 'text-success' if r.net >= 0 else 'text-danger' }}">{{ r.net|usd }}</td>
     </tr>
     {% else %}
     <tr><td colspan="5" class="text-muted">No animals of this type currently on the farm or that left during {{ year }}.</td></tr>
@@ -23,9 +23,9 @@
   <tfoot>
     <tr class="fw-bold border-top">
       <td colspan="2">Total</td>
-      <td>${{ "%.2f"|format(totals.cost) }}</td>
-      <td>${{ "%.2f"|format(totals.revenue) }}</td>
-      <td class="{{ 'text-success' if totals.net >= 0 else 'text-danger' }}">${{ "%.2f"|format(totals.net) }}</td>
+      <td>{{ totals.cost|usd }}</td>
+      <td>{{ totals.revenue|usd }}</td>
+      <td class="{{ 'text-success' if totals.net >= 0 else 'text-danger' }}">{{ totals.net|usd }}</td>
     </tr>
   </tfoot>
 </table>

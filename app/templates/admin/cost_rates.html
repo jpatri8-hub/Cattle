@@ -12,7 +12,7 @@
         <thead><tr><th>Effective Date</th><th>Rate / day</th></tr></thead>
         <tbody>
           {% for r in rates %}
-          <tr><td>{{ r.effective_date }}</td><td>${{ "%.2f"|format(r.rate_per_day) }}</td></tr>
+          <tr><td>{{ r.effective_date }}</td><td>{{ r.rate_per_day|usd }}</td></tr>
           {% endfor %}
         </tbody>
       </table>

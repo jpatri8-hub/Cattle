@@ -31,8 +31,8 @@
       <td>{{ s.buyer.name }}</td>
       <td>{{ s.sale_date }}</td>
       <td>{{ s.lines|length }}</td>
-      <td>${{ "%.2f"|format(s.total_price) }}</td>
-      <td>${{ "%.2f"|format(s.average_price) }}</td>
+      <td>{{ s.total_price|usd }}</td>
+      <td>{{ s.average_price|usd }}</td>
       <td>{{ "%.1f"|format(s.average_weight) if s.average_weight else "-" }}</td>
     </tr>
     {% else %}
