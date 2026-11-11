@@ -233,6 +233,15 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
 .followup-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
 .followup-list .inline-check { align-items: flex-start; }
+.checklist-snap { margin: 6px 0; }
+.checklist-snap details.cl { background: var(--bg); border-radius: 8px; padding: 6px 10px; margin: 4px 0; font-size: .9rem; }
+.checklist-snap summary { cursor: pointer; }
+.cl-list { list-style: none; padding: 0; margin: 6px 0 2px; columns: 2; column-gap: 16px; }
+.cl-list li { break-inside: avoid; color: var(--muted); padding: 1px 0; }
+.cl-list li.on { color: var(--ink); }
+.cl-list li.stop { font-weight: 600; }
+.cl-list .box { font-size: 1.05em; }
+@media (max-width: 420px) { .cl-list { columns: 1; } }
 .stops-box { background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
 .stop-list { list-style: none; padding: 0; margin: 6px 0 0; }
 .stop-list label { display: flex; gap: 10px; align-items: center; font-weight: 400; font-size: 1rem; padding: 5px 0; }

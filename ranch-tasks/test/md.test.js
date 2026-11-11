@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderGuide, parseFollowups } from '../public/md.js';
+import { renderGuide, parseFollowups, parseChecklist } from '../public/md.js';
 
 test('guide text is escaped (no HTML injection)', () => {
   const html = renderGuide('1. step <script>alert(1)</script>\n[x](javascript:alert(1))\n<img src=x onerror=alert(1)>');
@@ -40,4 +40,14 @@ test('stop headings get their own tick-box and still name follow-ups', () => {
   const html = renderGuide(g, { checklist: true });
   assert.equal((html.match(/class="stop"/g) || []).length, 2);
   assert.equal((html.match(/data-step=/g) || []).length, 2);
+});
+
+test('parseChecklist numbers tick-boxes exactly like renderGuide', () => {
+  const g = 'Intro\n\n## Hookup\n1. Back up\n2. **Left** arm\n! Engine off\n- Grease\n\n## [ ] Sharpers\n[ ] Hay -> Put out hay\n## [ ] Church field';
+  const list = parseChecklist(g);
+  assert.deepEqual(list.map((s) => [s.step, s.label, s.stop]), [
+    [1, 'Back up', false], [2, 'Left arm', false], [3, 'Grease', false], [4, 'Sharpers', true], [5, 'Church field', true],
+  ]);
+  const steps = [...renderGuide(g, { checklist: true }).matchAll(/data-step="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(steps, [1, 2, 3, 4, 5]);
 });
