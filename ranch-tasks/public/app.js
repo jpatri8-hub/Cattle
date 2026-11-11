@@ -395,6 +395,39 @@ async function completeTask(task, after, checked = null) {
   }));
 }
 
+// What was ticked when a task was completed (saved with the completion).
+function checklistHtml(raw, open = false) {
+  let c;
+  try { c = JSON.parse(raw || 'null'); } catch { c = null; }
+  if (!c) return '';
+  const list = (rows, title) => {
+    const done = rows.filter((r) => r[1]).length;
+    return `<details class="cl" ${open ? 'open' : ''}><summary>${title}: <b>${done} of ${rows.length}</b> ticked</summary>
+      <ul class="cl-list">${rows.map(([label, d, stop]) => `<li class="${d ? 'on' : ''}${stop ? ' stop' : ''}">
+        <span class="box">${d ? '☑' : '☐'}</span> ${esc(label)}</li>`).join('')}</ul></details>`;
+  };
+  return `<div class="checklist-snap">
+    ${c.steps?.length ? list(c.steps, 'Checklist') : ''}
+    ${c.stops?.length ? list(c.stops, 'Stops') : ''}
+    ${c.needs?.length ? `<div class="small"><b>Needs reported:</b> ${c.needs.map(esc).join(', ')}</div>` : ''}
+  </div>`;
+}
+
+// Back links return to the previous in-app screen when there is one.
+const navStack = [];
+window.addEventListener('hashchange', () => {
+  if (navStack.length > 1 && navStack[navStack.length - 2] === location.hash) navStack.pop();
+  else navStack.push(location.hash);
+});
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-back]');
+  if (a && navStack.length > 1) {
+    e.preventDefault();
+    history.back();
+  }
+});
+let livePoll = null;
+
 // ===================== VIEWS =====================
 
 function viewSetup() {
@@ -504,13 +537,12 @@ async function viewTask(id) {
   const t = await api('GET', `/tasks/${id}`);
   const canEdit = isOwner() || t.created_by === S.user.id;
   const late = t.due_date && t.due_date < S.today;
-  const chkKey = `chk:${t.id}:${t.due_date || 'any'}:${t.last_completed_at || ''}`;
   const prop = t.property_id ? { id: t.property_id, name: t.property_name, photo_updated_at: t.property_photo_at } : null;
   const asList = (v) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
   const stops = asList(t.followup_stops);
   const doneStops = new Set(asList(t.followup_done));
   main.innerHTML = `
-    <p><a href="#/">← Tasks</a></p>
+    <p><a href="#/" data-back>← Back</a></p>
     <div class="card">
       <div class="row between"><h1 class="grow">${esc(t.title)}</h1>
         ${t.status !== 'open' ? `<span class="tag">${esc(t.status)}</span>` : ''}</div>
@@ -545,6 +577,7 @@ async function viewTask(id) {
       ${t.history.length ? t.history.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)">
         <div class="row between"><b>${esc(c.user_name)}</b><span class="tag ${c.review_status}">${c.review_status}</span></div>
         <div class="small muted">${fmtDateTime(c.completed_at)}${c.due_date && c.completed_on > c.due_date ? ' · <span class="tag late">late</span>' : ''}</div>
+        ${checklistHtml(c.checklist)}
         ${c.notes ? `<div class="small desc">${esc(c.notes)}</div>` : ''}
         ${c.review_note ? `<div class="small"><b>${esc(c.reviewer_name || 'Owner')}:</b> ${esc(c.review_note)}</div>` : ''}
       </div>`).join('') : '<p class="muted">Not completed yet.</p>'}
@@ -569,14 +602,41 @@ async function viewTask(id) {
       toast(err.message, true);
     }
   }));
-  const checked = new Set(store.get(chkKey, []));
-  $$('#guideBody input[data-step]').forEach((cb) => {
-    cb.checked = checked.has(cb.dataset.step);
-    cb.addEventListener('change', () => {
-      cb.checked ? checked.add(cb.dataset.step) : checked.delete(cb.dataset.step);
-      store.set(chkKey, [...checked]);
-    });
-  });
+  // Guide ticks are shared: everyone sees the same boxes, refreshed while the page is open.
+  const applyChecks = (raw) => {
+    const c = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : raw || {};
+    const steps = new Set((c.steps || []).map(Number));
+    const fus = new Set((c.followups || []).map(Number));
+    $$('#guideBody input[data-step]').forEach((cb) => { cb.checked = steps.has(Number(cb.dataset.step)); });
+    $$('#guideBody input[data-followup]').forEach((cb) => { cb.checked = fus.has(Number(cb.dataset.followup)); });
+  };
+  applyChecks(t.guide_checks);
+  if (t.status !== 'open') $$('#guideBody input').forEach((cb) => { cb.disabled = true; });
+  $$('#guideBody input[data-step], #guideBody input[data-followup]').forEach((cb) => cb.addEventListener('change', async () => {
+    const isStep = cb.dataset.step != null;
+    try {
+      const r = await api('PUT', `/tasks/${t.id}/checks`, {
+        kind: isStep ? 'step' : 'followup', index: Number(isStep ? cb.dataset.step : cb.dataset.followup), checked: cb.checked,
+      });
+      applyChecks(r.checks);
+    } catch (err) {
+      cb.checked = !cb.checked;
+      toast(err.message, true);
+    }
+  }));
+  if (t.status === 'open' && (t.guide || stops.length)) {
+    livePoll = setInterval(async () => {
+      if (document.visibilityState !== 'visible' || modal.open) return;
+      try {
+        const fresh = await api('GET', `/tasks/${t.id}`);
+        if (fresh.status !== 'open') return render();
+        applyChecks(fresh.guide_checks);
+        const done = new Set(asList(fresh.followup_done));
+        $$('input[data-stop]').forEach((cb) => { cb.checked = done.has(stops[Number(cb.dataset.stop)]); });
+        if ($('#stopCount')) $('#stopCount').textContent = `${done.size} of ${stops.length} done`;
+      } catch { /* try again next time */ }
+    }, 15000);
+  }
   $('#archiveBtn')?.addEventListener('click', guard(async () => {
     if (!confirm('Archive this task? Its history is kept.')) return;
     await api('DELETE', `/tasks/${t.id}`);
@@ -802,7 +862,7 @@ async function viewGuides(query) {
 
 async function viewGuide(id) {
   const g = await api('GET', `/guides/${id}`);
-  main.innerHTML = `<p><a href="#/guides">← Guides</a></p>
+  main.innerHTML = `<p><a href="#/guides" data-back>← Back</a></p>
     <div class="card"><span class="tag">${esc(g.category)}</span>${g.archived ? ' <span class="tag pending">Archived</span>' : ''}
       <h1 style="margin-top:6px">${esc(g.title)}</h1>
       <div class="guide-body" id="gb">${renderGuide(g.body, { checklist: true })}</div>
@@ -900,7 +960,7 @@ async function viewProperties() {
 async function viewProperty(id) {
   const p = await api('GET', `/properties/${id}`);
   const pinned = p.tasks.filter((t) => parseMarks(t.marks).length);
-  main.innerHTML = `<p><a href="#/properties">← Properties</a></p>
+  main.innerHTML = `<p><a href="#/properties" data-back>← Back</a></p>
     <div class="row between"><h1 style="margin:0">${esc(p.name)}</h1>
       <a class="btn primary" href="#/task/new?property=${p.id}">+ Task here</a></div>
     ${p.notes ? `<p class="desc">${esc(p.notes)}</p>` : ''}
@@ -1136,6 +1196,7 @@ async function viewReview(query) {
       <div class="row between"><a href="#/task/${c.task_id}"><b>${esc(c.task_title)}</b></a><span class="tag ${c.review_status}">${c.review_status}</span></div>
       <div class="small muted">${esc(c.user_name)} · ${fmtDateTime(c.completed_at)}
         ${c.due_date ? ` · due ${fmtDay(c.due_date)}` : ''} ${c.due_date && c.completed_on > c.due_date ? '<span class="tag late">late</span>' : ''}</div>
+      ${checklistHtml(c.checklist, true)}
       ${c.notes ? `<p class="desc">${esc(c.notes)}</p>` : ''}
       ${c.review_note ? `<p class="small"><b>Review note:</b> ${esc(c.review_note)}</p>` : ''}
       <div class="row">
@@ -1286,6 +1347,7 @@ const ROUTES = [
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
+  clearInterval(livePoll);
   const [path, qs] = (location.hash.slice(1) || '/').split('?');
   const query = new URLSearchParams(qs || '');
   if (path === '/setup') return viewSetup();
@@ -1334,4 +1396,5 @@ document.addEventListener('visibilitychange', async () => {
   } catch { /* ignore */ }
 });
 
+navStack.push(location.hash);
 boot().catch((err) => { main.innerHTML = `<div class="card empty">Could not load: ${esc(err.message)}</div>`; });

@@ -61,6 +61,14 @@ export function summarize(entries, { nowIso = new Date().toISOString() } = {}) {
   return out;
 }
 
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// "2026-11-03" -> "Tue 11/03/2026" for the payroll export.
+export function csvDate(date) {
+  const [y, m, d] = date.split('-');
+  return `${DOW[new Date(Date.UTC(+y, +m - 1, +d)).getUTCDay()]} ${m}/${d}/${y}`;
+}
+
 function csvCell(v) {
   const s = v == null ? '' : String(v);
   // Neutralise spreadsheet formula injection, then quote if needed.
@@ -83,7 +91,7 @@ export function changeLabel(e) {
 // Detailed timesheet: one row per punch, followed by per-employee totals.
 export function payrollCsv(entries, summary, { tz, from, to, nowIso = new Date().toISOString() }) {
   const rows = [
-    [`Payroll report ${from} to ${to}`],
+    [`Payroll report ${csvDate(from)} to ${csvDate(to)}`],
     [],
     ['Employee', 'Date', 'Clock In', 'Clock Out', 'Hours', 'Changes', 'Note'],
   ];
@@ -91,7 +99,7 @@ export function payrollCsv(entries, summary, { tz, from, to, nowIso = new Date()
   for (const e of sorted) {
     rows.push([
       e.name,
-      e.work_date,
+      csvDate(e.work_date),
       e.kind === 'pto' ? 'PTO' : localTime(e.clock_in, tz),
       e.kind === 'pto' ? '' : e.clock_out ? localTime(e.clock_out, tz) : 'STILL CLOCKED IN',
       entryHours(e, nowIso).toFixed(2),

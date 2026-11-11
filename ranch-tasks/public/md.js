@@ -28,6 +28,30 @@ export function parseFollowups(text) {
   return out;
 }
 
+// Every tick-box step in a guide, numbered exactly as renderGuide numbers its
+// data-step boxes (stop headings, bullets and numbered steps). Follow-ups are
+// separate (parseFollowups). Used to record what was ticked on completion.
+const WARN_RE = /^(?:!|⚠️?)\s*(.*)$/;
+const ITEM_RE = /^(?:[-*]|\d+[.)])\s+(?:\[[ xX]?\]\s*)?(.*)$/;
+const plain = (s) => s.replace(/\*\*/g, '').trim();
+export function parseChecklist(text) {
+  const out = [];
+  let step = 0;
+  for (const raw of String(text || '').replace(/\r/g, '').split('\n')) {
+    const t = raw.trim();
+    let m;
+    if (!t || FOLLOWUP_RE.test(t)) continue;
+    if ((m = t.match(HEADING_RE))) {
+      if (BOX_RE.test(m[2])) out.push({ step: ++step, label: plain(m[2].replace(BOX_RE, '')), stop: true });
+    } else if (WARN_RE.test(t)) {
+      continue;
+    } else if ((m = t.match(ITEM_RE))) {
+      out.push({ step: ++step, label: plain(m[1]), stop: false });
+    }
+  }
+  return out;
+}
+
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

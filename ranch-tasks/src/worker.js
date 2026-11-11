@@ -6,7 +6,7 @@ import {
   localDate, localHour, summarize, payrollCsv, payPeriodOf, previousPayPeriod, AUTO_CLOCKOUT_HOURS,
 } from './payroll.js';
 import { buildPayrollEmail } from './email.js';
-import { parseFollowups } from '../public/md.js';
+import { parseFollowups, parseChecklist } from '../public/md.js';
 
 const SESSION_DAYS = 30;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -507,6 +507,33 @@ route('PUT', '/api/tasks/:id', async ({ env, user, params, body }) => {
   return json({ ok: true });
 });
 
+// Guide tick-boxes on an open task are saved on the task, so everyone working
+// it sees the same progress. { steps: [stepNumbers], followups: [indexes] }
+function parseChecks(v) {
+  try {
+    const o = JSON.parse(v || '{}');
+    const nums = (a) => (Array.isArray(a) ? a.map(Number).filter(Number.isInteger) : []);
+    return { steps: nums(o.steps), followups: nums(o.followups) };
+  } catch {
+    return { steps: [], followups: [] };
+  }
+}
+
+route('PUT', '/api/tasks/:id/checks', async ({ env, user, params, body }) => {
+  const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(Number(params.id)).first();
+  if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
+  if (task.status !== 'open') throw new HttpError(400, 'This task is already closed');
+  const kind = body.kind === 'followup' ? 'followups' : 'steps';
+  const index = optInt(body.index, 0, 10000);
+  if (index == null) throw new HttpError(400, 'Missing tick-box');
+  const checks = parseChecks(task.guide_checks);
+  const set = new Set(checks[kind]);
+  body.checked === false ? set.delete(index) : set.add(index);
+  checks[kind] = [...set].sort((a, b) => a - b);
+  await env.DB.prepare('UPDATE tasks SET guide_checks = ? WHERE id = ?').bind(JSON.stringify(checks), task.id).run();
+  return json({ ok: true, checks });
+});
+
 // Tick off stops on a grouped follow-up to-do ("Put out hay: Sharpers, ...").
 // Saved on the task so everyone sees the same progress.
 route('PUT', '/api/tasks/:id/stops', async ({ env, user, params, body }) => {
@@ -592,17 +619,41 @@ async function followupStatements(env, user, task, picked, day) {
   return { stmts, created, updated };
 }
 
+// What was ticked when the task was completed, kept with the completion so the
+// owner can review it: guide steps and stops (ticked or not), needs reported,
+// and stops done on a grouped to-do. Labels are stored, so later guide edits
+// don't change old records.
+async function checklistSnapshot(env, task, picked) {
+  const out = {};
+  const guide = task.guide_id ? await env.DB.prepare('SELECT body FROM guides WHERE id = ?').bind(task.guide_id).first() : null;
+  if (guide) {
+    const checks = parseChecks(task.guide_checks);
+    const steps = parseChecklist(guide.body);
+    if (steps.length) out.steps = steps.map((s) => [s.label, checks.steps.includes(s.step) ? 1 : 0, s.stop ? 1 : 0]);
+    const fus = parseFollowups(guide.body);
+    const needs = [...new Set((Array.isArray(picked) ? picked : []).map(Number))].map((i) => fus[i]?.todo).filter(Boolean);
+    if (needs.length) out.needs = needs;
+  }
+  const stops = parseStops(task.followup_stops);
+  if (stops.length) {
+    const done = parseStops(task.followup_done);
+    out.stops = stops.map((x) => [x, done.includes(x) ? 1 : 0]);
+  }
+  return Object.keys(out).length ? JSON.stringify(out) : null;
+}
+
 async function completeTask(env, user, id, { notes, followups } = {}) {
   const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
   if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
   if (task.status !== 'open') throw new HttpError(400, 'This task is already closed');
   const settings = await getSettings(env);
   const day = today(settings);
+  const checklist = await checklistSnapshot(env, task, followups);
   const stmts = [
     env.DB.prepare(
-      `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(notes, 5000)),
+      `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, notes, checklist)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(notes, 5000), checklist),
   ];
   const fu = await followupStatements(env, user, task, followups, day);
   stmts.push(...fu.stmts);
@@ -610,11 +661,13 @@ async function completeTask(env, user, id, { notes, followups } = {}) {
   let repeated = false;
   if (task.recur_type !== 'none') {
     next = nextDueAfterCompletion(task, day);
-    stmts.push(env.DB.prepare('UPDATE tasks SET due_date = ?, updated_at = ? WHERE id = ?').bind(next, nowIso(), id));
+    stmts.push(env.DB.prepare('UPDATE tasks SET due_date = ?, guide_checks = NULL, updated_at = ? WHERE id = ?')
+      .bind(next, nowIso(), id));
   } else if (task.repeat_on_complete) {
     // Straight back on the list, due anytime; its history stays on the task.
     repeated = true;
-    stmts.push(env.DB.prepare('UPDATE tasks SET followup_done = NULL, updated_at = ? WHERE id = ?').bind(nowIso(), id));
+    stmts.push(env.DB.prepare('UPDATE tasks SET followup_done = NULL, guide_checks = NULL, updated_at = ? WHERE id = ?')
+      .bind(nowIso(), id));
   } else {
     stmts.push(env.DB.prepare("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?").bind(nowIso(), id));
   }

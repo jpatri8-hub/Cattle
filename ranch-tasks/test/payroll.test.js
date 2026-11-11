@@ -55,7 +55,7 @@ test('PTO is counted separately from worked hours', () => {
   assert.equal(s.total, 17);
   assert.deepEqual(Object.keys(s.days), ['2026-11-02']);
   const csv = payrollCsv(entries, [s], { tz: 'America/Chicago', from: '2026-11-01', to: '2026-11-15' });
-  assert.match(csv, /Jake,2026-11-05,PTO,,8\.00,PTO; Edited,Vacation/);
+  assert.match(csv, /Jake,Thu 11\/05\/2026,PTO,,8\.00,PTO; Edited,Vacation/);
   assert.equal(s.edited, 0); // the owner changing PTO isn't a punch changed by hand
   assert.match(csv, /Jake,9\.00,8\.00,17\.00,0,0/);
 });
@@ -80,7 +80,8 @@ test('CSV escapes quotes/commas, neutralises formulas, and marks changes', () =>
     e(1, 'Jake', '2026-11-05', 2, 16, { auto_closed: 1, needs_review: 1 }),
   ];
   const csv = payrollCsv(entries, summarize(entries), { tz: 'America/Chicago', from: '2026-11-01', to: '2026-11-15' });
-  assert.match(csv, /Jake,2026-11-03,8:00\sAM,5:00\sPM,9\.00,,/);
+  assert.match(csv, /^Payroll report Sun 11\/01\/2026 to Sun 11\/15\/2026/);
+  assert.match(csv, /Jake,Tue 11\/03\/2026,8:00\sAM,5:00\sPM,9\.00,,/);
   assert.match(csv, /Edited by Jake,Forgot to clock in/);
   assert.match(csv, /Auto clock-out at 14h \(not yet confirmed\)/);
   assert.match(csv, /Jake,32\.00,0\.00,32\.00,1,1/);
