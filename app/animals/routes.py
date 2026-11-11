@@ -14,7 +14,7 @@ from app.forms import (
 from app.lifecycle import (
     apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
     choose_rotating_sire, compute_calf_type, compute_dam_candidate_sires,
-    generate_temp_id,
+    generate_temp_id, log_location_change_seen_check,
 )
 from app.models import (
     Animal, animal_sort_key, AnimalType, BreedingGroup, BullEPD, CALVING_EASE_CHOICES, CalfRecord,
@@ -238,7 +238,9 @@ def edit_animal(animal_id):
             animal.sex = atype.sex
             animal.birth_date = form.birth_date.data
             animal.birth_weight = form.birth_weight.data
-            animal.location_id = form.location_id.data or None
+            new_location_id = form.location_id.data or None
+            log_location_change_seen_check(animal, new_location_id, current_user.id)
+            animal.location_id = new_location_id
             animal.birth_location_id = form.birth_location_id.data or None
             animal.sire_id = form.sire_id.data or None
             animal.dam_id = form.dam_id.data or None
@@ -375,6 +377,7 @@ def bulk_action():
             flash("Pick a location to move the selected animals to.", "warning")
         else:
             for a in animals:
+                log_location_change_seen_check(a, location.id, current_user.id, notes="Seen - moved via bulk action.")
                 a.location_id = location.id
             db.session.commit()
             flash(f"Moved {len(animals)} animal(s) to {location.display_name}.", "success")

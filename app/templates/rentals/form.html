@@ -11,8 +11,12 @@
     </div>
 
     <div class="col-md-6 mb-3">{{ form.bull_id.label(class="form-label") }} {{ form.bull_id(class="form-select") }}</div>
-    <div class="col-md-3 mb-3">{{ form.start_date.label(class="form-label") }} {{ form.start_date(class="form-control") }}</div>
-    <div class="col-md-3 mb-3">{{ form.end_date.label(class="form-label") }} {{ form.end_date(class="form-control") }}</div>
+    <div class="col-md-2 mb-3">{{ form.start_date.label(class="form-label") }} {{ form.start_date(id="start_date", class="form-control") }}</div>
+    <div class="col-md-2 mb-3">
+      {{ form.duration_days.label(class="form-label") }} {{ form.duration_days(id="duration_days", class="form-control") }}
+    </div>
+    <div class="col-md-2 mb-3">{{ form.end_date.label(class="form-label") }} {{ form.end_date(id="end_date", class="form-control") }}</div>
+    <div class="col-12 mb-3 mt-n2"><small class="text-muted">Fill in Duration (days) instead of End Date and it'll be calculated for you as you type - or enter End Date directly and leave Duration blank.</small></div>
     <div class="col-md-6 mb-3">
       {{ form.bull_count.label(class="form-label") }} {{ form.bull_count(class="form-control") }}
       <small class="text-muted">Leave Bull set to "Not yet decided" and fill this in as a reminder - e.g. a deposit's been paid but it's too early to pick which bull(s). Assign a specific bull later by editing this rental.</small>
@@ -27,4 +31,26 @@
   {{ form.submit(class="btn btn-success") }}
   <a href="{{ url_for('rentals.view_rental', rental_id=rental.id) if rental else url_for('rentals.list_rentals') }}" class="btn btn-link">Cancel</a>
 </form>
+<script>
+(function () {
+  var startInput = document.getElementById('start_date');
+  var durationInput = document.getElementById('duration_days');
+  var endInput = document.getElementById('end_date');
+
+  function recalcEndDate() {
+    var startVal = startInput.value;
+    var duration = parseInt(durationInput.value, 10);
+    if (!startVal || !duration || duration < 1) return;
+    var start = new Date(startVal + 'T00:00:00');
+    start.setDate(start.getDate() + duration - 1);
+    endInput.value = start.toISOString().slice(0, 10);
+  }
+
+  durationInput.addEventListener('input', recalcEndDate);
+  startInput.addEventListener('change', recalcEndDate);
+  endInput.addEventListener('input', function () {
+    if (endInput.value) durationInput.value = '';
+  });
+})();
+</script>
 {% endblock %}

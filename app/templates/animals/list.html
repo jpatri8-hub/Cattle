@@ -90,7 +90,7 @@
       </thead>
       <tbody>
         {% for a in group_animals %}
-        <tr class="{{ 'table-warning' if a.not_seen_flagged }}">
+        <tr class="{{ 'table-success' if a.is_bull and a.current_semen_status == 'Good' else 'table-danger' if a.is_bull and a.current_semen_status == 'Bad' else 'table-primary' if a.is_bull and a.current_semen_status == 'Retest' else 'table-warning' if a.not_seen_flagged else '' }}">
           <td><input type="checkbox" class="animal-check" name="animal_ids" value="{{ a.id }}" form="bulkForm"></td>
           <td><a href="{{ url_for('animals.view_animal', animal_id=a.id, back=request.full_path) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
           <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>

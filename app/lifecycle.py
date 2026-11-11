@@ -8,13 +8,27 @@ from datetime import date, timedelta
 
 from app import db
 from app.models import (
-    Animal, AnimalType, BreedingGroup, CalfRecord, ExposureRecord, Location, Rental,
+    Animal, AnimalType, BreedingGroup, CalfRecord, ExposureRecord, LastSeenCheck, Location, Rental,
     RENTAL_ACTIVE, SEMEN_BAD, SEMEN_RETEST, SEX_FEMALE, SEX_MALE,
     TRANSFER_TRIGGER_AGE, TRANSFER_TRIGGER_WEANED,
 )
 
 GESTATION_MIN_DAYS = 270
 GESTATION_MAX_DAYS = 295
+
+
+def log_location_change_seen_check(animal, new_location_id, seen_by_id, date_recorded=None, notes=None):
+    """Moving an animal is itself evidence it was seen - whenever its
+    location actually changes, log a LastSeenCheck at the new location so
+    it counts toward the "not seen in 4+ months" clock. A no-op "change" to
+    the same location logs nothing."""
+    if new_location_id == animal.location_id:
+        return
+    db.session.add(LastSeenCheck(
+        animal_id=animal.id, date_recorded=date_recorded or date.today(),
+        location_id=new_location_id, health_status="Healthy",
+        notes=notes or "Seen - location updated.", seen_by_id=seen_by_id,
+    ))
 
 
 def compute_candidate_sires(animal):

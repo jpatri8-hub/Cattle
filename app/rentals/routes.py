@@ -1,16 +1,30 @@
-from datetime import date
+from datetime import date, timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
 from app.forms import RentalCheckForm, RentalForm
+from app.lifecycle import log_location_change_seen_check
 from app.models import (
     Animal, animal_sort_key, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_RETURNED,
     Rental, RentalCheck,
 )
 
 rentals_bp = Blueprint("rentals", __name__, url_prefix="/rentals")
+
+
+def _resolve_end_date(form):
+    """End date can be entered directly, or derived from a duration in days
+    (duration=1 means a single-day rental: end_date == start_date, matching
+    how Rental.revenue counts days). Returns (end_date, error_message)."""
+    if form.end_date.data:
+        return form.end_date.data, None
+    if form.duration_days.data:
+        if form.duration_days.data < 1:
+            return None, "Duration must be at least 1 day."
+        return form.start_date.data + timedelta(days=form.duration_days.data - 1), None
+    return None, "Enter an end date, or a duration in days."
 
 
 def _has_conflict(bull_id, start_date, end_date, exclude_rental_id=None):
@@ -56,11 +70,14 @@ def new_rental():
     if form.validate_on_submit():
         bull_id = form.bull_id.data or None
         bull_count = form.bull_count.data
-        if form.end_date.data < form.start_date.data:
+        end_date, end_date_error = _resolve_end_date(form)
+        if end_date_error:
+            flash(end_date_error, "danger")
+        elif end_date < form.start_date.data:
             flash("End date must be on or after the start date.", "danger")
         elif not bull_id and not bull_count:
             flash("Pick a bull, or enter a number of bulls if it's too early to decide which one(s).", "danger")
-        elif bull_id and _has_conflict(bull_id, form.start_date.data, form.end_date.data):
+        elif bull_id and _has_conflict(bull_id, form.start_date.data, end_date):
             flash("That bull is already booked during part of this date range.", "danger")
         else:
             rental = Rental(
@@ -68,7 +85,7 @@ def new_rental():
                 bull_count=None if bull_id else bull_count,
                 customer_id=form.customer_id.data,
                 start_date=form.start_date.data,
-                end_date=form.end_date.data,
+                end_date=end_date,
                 rate=form.rate.data,
                 rate_type=form.rate_type.data,
                 deposit_amount=form.deposit_amount.data,
@@ -101,18 +118,21 @@ def edit_rental(rental_id):
     if form.validate_on_submit():
         bull_id = form.bull_id.data or None
         bull_count = form.bull_count.data
-        if form.end_date.data < form.start_date.data:
+        end_date, end_date_error = _resolve_end_date(form)
+        if end_date_error:
+            flash(end_date_error, "danger")
+        elif end_date < form.start_date.data:
             flash("End date must be on or after the start date.", "danger")
         elif not bull_id and not bull_count:
             flash("Pick a bull, or enter a number of bulls if it's too early to decide which one(s).", "danger")
-        elif bull_id and _has_conflict(bull_id, form.start_date.data, form.end_date.data, exclude_rental_id=rental.id):
+        elif bull_id and _has_conflict(bull_id, form.start_date.data, end_date, exclude_rental_id=rental.id):
             flash("That bull is already booked during part of this date range.", "danger")
         else:
             rental.bull_id = bull_id
             rental.bull_count = None if bull_id else bull_count
             rental.customer_id = form.customer_id.data
             rental.start_date = form.start_date.data
-            rental.end_date = form.end_date.data
+            rental.end_date = end_date
             rental.rate = form.rate.data
             rental.rate_type = form.rate_type.data
             rental.deposit_amount = form.deposit_amount.data
@@ -165,6 +185,10 @@ def add_check(rental_id):
             if form.condition_score.data:
                 rental.return_condition_score = form.condition_score.data
             if form.location_id.data:
+                log_location_change_seen_check(
+                    rental.bull, form.location_id.data, current_user.id,
+                    date_recorded=form.date_recorded.data, notes="Seen - location updated on rental return.",
+                )
                 rental.bull.location_id = form.location_id.data
 
         db.session.commit()
