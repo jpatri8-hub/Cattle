@@ -20,7 +20,9 @@ export function parseFollowups(text) {
   for (const raw of String(text || '').replace(/\r/g, '').split('\n')) {
     const t = raw.trim();
     let m;
-    if ((m = t.match(HEADING_RE))) heading = m[2].replace(BOX_RE, '').replace(/\*\*/g, '').trim();
+    // "Behind the barn (15 bulls)": notes in parentheses stay in the guide but
+    // aren't part of the stop name used on to-dos.
+    if ((m = t.match(HEADING_RE))) heading = m[2].replace(BOX_RE, '').replace(/\*\*/g, '').replace(/\s*\([^()]*\)/g, '').trim();
     else if ((m = t.match(FOLLOWUP_RE))) {
       out.push({ index: out.length, label: m[1], action: m[2], where: heading, todo: heading ? `${m[2]} – ${heading}` : m[2] });
     }
