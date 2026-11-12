@@ -51,3 +51,10 @@ test('parseChecklist numbers tick-boxes exactly like renderGuide', () => {
   const steps = [...renderGuide(g, { checklist: true }).matchAll(/data-step="(\d+)"/g)].map((m) => Number(m[1]));
   assert.deepEqual(steps, [1, 2, 3, 4, 5]);
 });
+
+test('notes in parentheses after a stop are left off its to-dos', () => {
+  const g = '## [ ] Behind the barn (15 bulls)\n[ ] Hay -> Put out hay\n## Sterling bulls (back pen)\n[ ] Hay -> Put out hay';
+  const f = parseFollowups(g);
+  assert.deepEqual(f.map((x) => x.todo), ['Put out hay – Behind the barn', 'Put out hay – Sterling bulls']);
+  assert.match(renderGuide(g, { checklist: true }), /Behind the barn \(15 bulls\)/);
+});

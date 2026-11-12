@@ -651,9 +651,13 @@ async function completeTask(env, user, id, { notes, followups } = {}) {
   const checklist = await checklistSnapshot(env, task, followups);
   const stmts = [
     env.DB.prepare(
-      `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, notes, checklist)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(notes, 5000), checklist),
+      // The owner's own work doesn't need reviewing: it's recorded as approved.
+      `INSERT INTO completions (task_id, task_title, user_id, completed_at, completed_on, due_date, notes, checklist,
+         review_status, reviewed_by, reviewed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, task.title, user.id, nowIso(), day, task.due_date, str(notes, 5000), checklist,
+      user.role === 'owner' ? 'approved' : 'pending', user.role === 'owner' ? user.id : null,
+      user.role === 'owner' ? nowIso() : null),
   ];
   const fu = await followupStatements(env, user, task, followups, day);
   stmts.push(...fu.stmts);

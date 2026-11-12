@@ -904,7 +904,9 @@ async function viewGuideForm(id) {
           <p><b>Follow-ups:</b> <code>[ ] Needs hay -&gt; Put out hay</code> shows a tick-box. When the task is marked
           complete, ticked items are grouped into one high-priority to-do per supply with no due date, listing the
           headings they were under (e.g. “Put out hay: Sharpers, Lake field”).</p>
-          <p><b>Stops:</b> <code>## [ ] Sharpers</code> makes a heading with its own tick-box to mark off as you go.</p></details></div>
+          <p><b>Stops:</b> <code>## [ ] Sharpers</code> makes a heading with its own tick-box to mark off as you go.
+          Add notes in parentheses after the name, like <code>## [ ] Behind the barn (15 bulls)</code>: the note shows in the
+          guide, but to-dos just say “Behind the barn”.</p></details></div>
       <div class="row"><button class="primary grow" type="submit">Save guide</button><button type="button" id="prev">Preview</button></div>
       <div class="guide-body card hidden" id="preview" style="margin-top:12px"></div>
     </form>`;
