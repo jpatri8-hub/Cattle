@@ -15,9 +15,15 @@ def dashboard():
     active_animals = Animal.query.filter_by(is_active=True).all()
     bulls_available = len([a for a in active_animals if a.is_rentable_available])
 
+    # A calf isn't counted on the farm-wide tallies until she's weaned - a
+    # saved calf quality rating is the signal used for that, since it's set
+    # at weaning. Animals with no calf_record (purchased, not a recorded
+    # calf) are unaffected.
+    countable_animals = [a for a in active_animals if not a.calf_record or a.calf_record.quality]
+
     counts_by_type = {}
     counts_by_location = {}
-    for a in active_animals:
+    for a in countable_animals:
         type_name = a.animal_type.name if a.animal_type else "Unknown Type"
         counts_by_type[type_name] = counts_by_type.get(type_name, 0) + 1
         loc_name = a.location.display_name if a.location else "No Location"
@@ -27,6 +33,12 @@ def dashboard():
 
     today = date.today()
     soon = today + timedelta(days=14)
+
+    bulls_committed_unassigned = sum(
+        (r.bull_count or 1) for r in Rental.query.filter(
+            Rental.bull_id.is_(None), Rental.status.in_([RENTAL_BOOKED, RENTAL_ACTIVE])
+        ).all()
+    )
 
     upcoming_returns = (
         Rental.query.filter(Rental.status == RENTAL_ACTIVE, Rental.end_date <= soon)
@@ -65,6 +77,7 @@ def dashboard():
         counts_by_type=counts_by_type,
         counts_by_location=counts_by_location,
         bulls_available=bulls_available,
+        bulls_committed_unassigned=bulls_committed_unassigned,
         upcoming_returns=upcoming_returns,
         upcoming_bookings=upcoming_bookings,
         overdue_vaccines=overdue_vaccines,
