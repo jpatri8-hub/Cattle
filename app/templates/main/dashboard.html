@@ -8,11 +8,14 @@
     <div class="card card-dashboard p-3 text-center">
       <div class="text-muted">Bulls Available for Rent</div>
       <div class="display-6 text-success">{{ bulls_available }}</div>
+      {% if bulls_committed_unassigned %}
+      <div class="small text-muted">+{{ bulls_committed_unassigned }} committed via rentals with no bull assigned yet</div>
+      {% endif %}
     </div>
   </div>
   <div class="col-md-4">
     <div class="card card-dashboard p-3">
-      <div class="text-muted mb-1">On Farm by Type</div>
+      <div class="text-muted mb-1">On Farm by Type <small>(excludes unweaned calves)</small></div>
       <ul class="list-group list-group-flush">
         {% for type_name, count in counts_by_type.items() %}
         <li class="list-group-item d-flex justify-content-between py-1"><span>{{ type_name }}</span><span class="fw-semibold">{{ count }}</span></li>
@@ -22,7 +25,7 @@
   </div>
   <div class="col-md-4">
     <div class="card card-dashboard p-3">
-      <div class="text-muted mb-1">On Farm by Location</div>
+      <div class="text-muted mb-1">On Farm by Location <small>(excludes unweaned calves)</small></div>
       <ul class="list-group list-group-flush">
         {% for loc_name, count in counts_by_location.items() %}
         <li class="list-group-item d-flex justify-content-between py-1"><span>{{ loc_name }}</span><span class="fw-semibold">{{ count }}</span></li>
