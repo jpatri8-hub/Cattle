@@ -6,7 +6,7 @@ import {
   localDate, localHour, summarize, payrollCsv, payPeriodOf, previousPayPeriod, AUTO_CLOCKOUT_HOURS,
 } from './payroll.js';
 import { buildPayrollEmail } from './email.js';
-import { parseFollowups, parseChecklist } from '../public/md.js';
+import { parseChecklist, parseRoute } from '../public/md.js';
 
 const SESSION_DAYS = 30;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -513,25 +513,60 @@ function parseChecks(v) {
   try {
     const o = JSON.parse(v || '{}');
     const nums = (a) => (Array.isArray(a) ? a.map(Number).filter(Number.isInteger) : []);
-    return { steps: nums(o.steps), followups: nums(o.followups) };
+    return { steps: nums(o.steps), followups: nums(o.followups), good: nums(o.good) };
   } catch {
-    return { steps: [], followups: [] };
+    return { steps: [], followups: [], good: [] };
   }
 }
 
+// On a route, tapping a need (e.g. Hay at Sharpers) adds that stop to the
+// supply's to-do right away; tapping it again takes it back off. "All good"
+// marks a stop checked and clears any needs tapped there. Other guides just
+// record which steps are ticked.
 route('PUT', '/api/tasks/:id/checks', async ({ env, user, params, body }) => {
   const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(Number(params.id)).first();
   if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
   if (task.status !== 'open') throw new HttpError(400, 'This task is already closed');
-  const kind = body.kind === 'followup' ? 'followups' : 'steps';
   const index = optInt(body.index, 0, 10000);
   if (index == null) throw new HttpError(400, 'Missing tick-box');
+  const on = body.checked !== false;
   const checks = parseChecks(task.guide_checks);
-  const set = new Set(checks[kind]);
-  body.checked === false ? set.delete(index) : set.add(index);
-  checks[kind] = [...set].sort((a, b) => a - b);
+  const toggle = (list, i, add) => {
+    const set = new Set(list);
+    add ? set.add(i) : set.delete(i);
+    return [...set].sort((a, b) => a - b);
+  };
+  const messages = [];
+  if (body.kind === 'followup' || body.kind === 'good') {
+    const guide = task.guide_id ? await env.DB.prepare('SELECT body FROM guides WHERE id = ?').bind(task.guide_id).first() : null;
+    const { stops } = parseRoute(guide?.body);
+    const day = today(await getSettings(env));
+    if (body.kind === 'followup') {
+      const stop = stops.find((s) => s.needs.some((n) => n.index === index));
+      if (!stop) throw new HttpError(400, 'That need is not on this route');
+      const need = stop.needs.find((n) => n.index === index);
+      if (on !== checks.followups.includes(index)) {
+        messages.push(on ? await addStopToTodo(env, user, task, need.action, stop.name, day)
+          : await removeStopFromTodo(env, task, need.action, stop.name, day));
+      }
+      checks.followups = toggle(checks.followups, index, on);
+      if (on) checks.good = toggle(checks.good, stop.index, false);
+    } else {
+      const stop = stops[index];
+      if (!stop) throw new HttpError(400, 'That stop is not on this route');
+      if (on) {
+        for (const need of stop.needs.filter((n) => checks.followups.includes(n.index))) {
+          messages.push(await removeStopFromTodo(env, task, need.action, stop.name, day));
+          checks.followups = toggle(checks.followups, need.index, false);
+        }
+      }
+      checks.good = toggle(checks.good, index, on);
+    }
+  } else {
+    checks.steps = toggle(checks.steps, index, on);
+  }
   await env.DB.prepare('UPDATE tasks SET guide_checks = ? WHERE id = ?').bind(JSON.stringify(checks), task.id).run();
-  return json({ ok: true, checks });
+  return json({ ok: true, checks, message: messages.filter(Boolean).join(' ') });
 });
 
 // Tick off stops on a grouped follow-up to-do ("Put out hay: Sharpers, ...").
@@ -579,60 +614,78 @@ function parseStops(v) {
   }
 }
 
-async function followupStatements(env, user, task, picked, day) {
-  const none = { stmts: [], created: [], updated: [] };
-  if (!task.guide_id || !Array.isArray(picked) || !picked.length) return none;
-  const guide = await env.DB.prepare('SELECT body FROM guides WHERE id = ?').bind(task.guide_id).first();
-  const items = parseFollowups(guide?.body);
-  const groups = new Map();
-  for (const i of new Set(picked.map(Number))) {
-    const item = items[i];
-    if (!item) continue;
-    const action = item.action.trim().slice(0, 120);
-    const key = action.toLowerCase();
-    if (!groups.has(key)) groups.set(key, { action, stops: [] });
-    const stop = (item.where || 'General').slice(0, 80);
-    if (!groups.get(key).stops.includes(stop)) groups.get(key).stops.push(stop);
+function followupDescription(stops, task, day) {
+  return `Stops:\n${stops.map((x) => `• ${x}`).join('\n')}\n\nLast updated from "${task.title}" on ${day}.`;
+}
+
+async function openTodoFor(env, action) {
+  return env.DB.prepare(
+    "SELECT id, followup_stops, followup_done FROM tasks WHERE status = 'open' AND followup_key = ? COLLATE NOCASE ORDER BY id DESC LIMIT 1"
+  ).bind(action).first();
+}
+
+// Add a stop to the open to-do for this supply, or start one (high priority,
+// open to anyone, no due date).
+async function addStopToTodo(env, user, task, rawAction, rawStop, day) {
+  const action = rawAction.trim().slice(0, 120);
+  const stop = (rawStop || 'General').slice(0, 80);
+  const open = await openTodoFor(env, action);
+  const before = open ? parseStops(open.followup_stops) : [];
+  if (before.includes(stop)) return `${stop} is already on “${action}”.`;
+  const stops = [...before, stop];
+  const title = followupTitle(action, stops);
+  if (open) {
+    await env.DB.prepare('UPDATE tasks SET title = ?, description = ?, followup_stops = ?, updated_at = ? WHERE id = ?')
+      .bind(title, followupDescription(stops, task, day), JSON.stringify(stops), nowIso(), open.id).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO tasks (title, description, priority, due_date, created_by, followup_key, followup_stops)
+       VALUES (?, ?, 'high', NULL, ?, ?, ?)`
+    ).bind(title, followupDescription(stops, task, day), user.id, action, JSON.stringify(stops)).run();
   }
-  const { stmts, created, updated } = none;
-  for (const g of groups.values()) {
-    const open = await env.DB.prepare(
-      "SELECT id, followup_stops FROM tasks WHERE status = 'open' AND followup_key = ? COLLATE NOCASE ORDER BY id DESC LIMIT 1"
-    ).bind(g.action).first();
-    const before = open ? parseStops(open.followup_stops) : [];
-    const stops = [...before, ...g.stops.filter((x) => !before.includes(x))];
-    if (open && stops.length === before.length) continue; // nothing new for this supply
-    const title = followupTitle(g.action, stops);
-    const description = `Stops:\n${stops.map((x) => `• ${x}`).join('\n')}\n\nLast added from "${task.title}" on ${day}.`;
-    if (open) {
-      stmts.push(env.DB.prepare('UPDATE tasks SET title = ?, description = ?, followup_stops = ?, updated_at = ? WHERE id = ?')
-        .bind(title, description, JSON.stringify(stops), nowIso(), open.id));
-      updated.push(title);
-    } else {
-      stmts.push(env.DB.prepare(
-        `INSERT INTO tasks (title, description, priority, due_date, created_by, followup_key, followup_stops)
-         VALUES (?, ?, 'high', NULL, ?, ?, ?)`
-      ).bind(title, description, user.id, g.action, JSON.stringify(stops)));
-      created.push(title);
-    }
+  return `Added ${stop} to “${action}”.`;
+}
+
+// Take a stop back off its supply's to-do (a mis-tap). A stop someone already
+// marked done there stays; a to-do left with no stops is archived.
+async function removeStopFromTodo(env, task, rawAction, rawStop, day) {
+  const action = rawAction.trim().slice(0, 120);
+  const stop = (rawStop || 'General').slice(0, 80);
+  const open = await openTodoFor(env, action);
+  const before = open ? parseStops(open.followup_stops) : [];
+  if (!before.includes(stop)) return '';
+  if (parseStops(open.followup_done).includes(stop)) return `${stop} was already done on “${action}”, so it stays there.`;
+  const stops = before.filter((x) => x !== stop);
+  if (!stops.length) {
+    await env.DB.prepare("UPDATE tasks SET status = 'archived', updated_at = ? WHERE id = ?").bind(nowIso(), open.id).run();
+    return `Removed “${action}” (no stops left).`;
   }
-  return { stmts, created, updated };
+  await env.DB.prepare('UPDATE tasks SET title = ?, description = ?, followup_stops = ?, updated_at = ? WHERE id = ?')
+    .bind(followupTitle(action, stops), followupDescription(stops, task, day), JSON.stringify(stops), nowIso(), open.id).run();
+  return `Took ${stop} off “${action}”.`;
 }
 
 // What was ticked when the task was completed, kept with the completion so the
 // owner can review it: guide steps and stops (ticked or not), needs reported,
 // and stops done on a grouped to-do. Labels are stored, so later guide edits
 // don't change old records.
-async function checklistSnapshot(env, task, picked) {
+async function checklistSnapshot(env, task) {
   const out = {};
   const guide = task.guide_id ? await env.DB.prepare('SELECT body FROM guides WHERE id = ?').bind(task.guide_id).first() : null;
   if (guide) {
     const checks = parseChecks(task.guide_checks);
-    const steps = parseChecklist(guide.body);
-    if (steps.length) out.steps = steps.map((s) => [s.label, checks.steps.includes(s.step) ? 1 : 0, s.stop ? 1 : 0]);
-    const fus = parseFollowups(guide.body);
-    const needs = [...new Set((Array.isArray(picked) ? picked : []).map(Number))].map((i) => fus[i]?.todo).filter(Boolean);
-    if (needs.length) out.needs = needs;
+    const route = parseRoute(guide.body);
+    if (route.hasNeeds) {
+      // Each stop: [name (with note), all good?, [needs tapped]]
+      out.route = route.stops.map((s) => [
+        [s.name, s.note].filter(Boolean).join(' '),
+        checks.good.includes(s.index) ? 1 : 0,
+        s.needs.filter((n) => checks.followups.includes(n.index)).map((n) => n.label),
+      ]);
+    } else {
+      const steps = parseChecklist(guide.body);
+      if (steps.length) out.steps = steps.map((s) => [s.label, checks.steps.includes(s.step) ? 1 : 0, s.stop ? 1 : 0]);
+    }
   }
   const stops = parseStops(task.followup_stops);
   if (stops.length) {
@@ -642,13 +695,13 @@ async function checklistSnapshot(env, task, picked) {
   return Object.keys(out).length ? JSON.stringify(out) : null;
 }
 
-async function completeTask(env, user, id, { notes, followups } = {}) {
+async function completeTask(env, user, id, { notes } = {}) {
   const task = await env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
   if (!task || !canSeeTask(user, task)) throw new HttpError(404, 'Task not found');
   if (task.status !== 'open') throw new HttpError(400, 'This task is already closed');
   const settings = await getSettings(env);
   const day = today(settings);
-  const checklist = await checklistSnapshot(env, task, followups);
+  const checklist = await checklistSnapshot(env, task);
   const stmts = [
     env.DB.prepare(
       // The owner's own work doesn't need reviewing: it's recorded as approved.
@@ -659,8 +712,6 @@ async function completeTask(env, user, id, { notes, followups } = {}) {
       user.role === 'owner' ? 'approved' : 'pending', user.role === 'owner' ? user.id : null,
       user.role === 'owner' ? nowIso() : null),
   ];
-  const fu = await followupStatements(env, user, task, followups, day);
-  stmts.push(...fu.stmts);
   let next = null;
   let repeated = false;
   if (task.recur_type !== 'none') {
@@ -676,7 +727,7 @@ async function completeTask(env, user, id, { notes, followups } = {}) {
     stmts.push(env.DB.prepare("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?").bind(nowIso(), id));
   }
   await env.DB.batch(stmts);
-  return { ok: true, next_due: next, repeated, created: fu.created, updated: fu.updated };
+  return { ok: true, next_due: next, repeated };
 }
 
 route('POST', '/api/tasks/:id/complete', async ({ env, user, params, body }) => {

@@ -13,6 +13,31 @@ const FOLLOWUP_RE = /^\[\s?\]\s+(.+?)\s*(?:->|→)\s*(.+)$/;
 const HEADING_RE = /^(#{1,3})\s+(.*)$/;
 const BOX_RE = /^\[\s?\]\s+/;
 
+// A route (a guide with follow-ups, like the feed routes): every heading is a
+// stop and the follow-ups under it are what that stop can need. Need indexes
+// match parseFollowups. Text in parentheses after a stop name is a note.
+export function parseRoute(text) {
+  const stops = [];
+  const intro = [];
+  let cur = null;
+  let fu = 0;
+  for (const raw of String(text || '').replace(/\r/g, '').split('\n')) {
+    const t = raw.trim();
+    let m;
+    if ((m = t.match(HEADING_RE))) {
+      const full = m[2].replace(BOX_RE, '').replace(/\*\*/g, '').trim();
+      const name = full.replace(/\s*\([^()]*\)/g, '').trim();
+      stops.push((cur = { index: stops.length, name, note: (full.match(/\([^()]*\)/g) || []).join(' '), needs: [] }));
+    } else if ((m = t.match(FOLLOWUP_RE))) {
+      if (!cur) stops.push((cur = { index: stops.length, name: '', note: '', needs: [] }));
+      cur.needs.push({ index: fu++, label: m[1], action: m[2] });
+    } else if (!cur) {
+      intro.push(raw);
+    }
+  }
+  return { intro: intro.join('\n').trim(), stops, hasNeeds: fu > 0 };
+}
+
 // Shared with the server, which uses it to create the to-dos.
 export function parseFollowups(text) {
   const out = [];

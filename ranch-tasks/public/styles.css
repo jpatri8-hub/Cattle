@@ -256,3 +256,36 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   display: flex; gap: 10px; align-items: center; font-size: inherit; font-weight: 700; margin: 0;
 }
 .guide-body .stop input:checked + span { text-decoration: line-through; color: var(--muted); }
+
+/* Routes: one row per stop with need buttons (orange) and All good (green). */
+.progress { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; margin: 10px 0 4px; }
+.progress > div { height: 100%; background: var(--ok); transition: width .2s; }
+.stop-row { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.stop-row:last-of-type { border-bottom: none; }
+.stop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.stop-name { font-weight: 700; }
+.stop-note { color: var(--muted); font-weight: 400; font-size: .88rem; }
+.stop-state { font-size: .78rem; font-weight: 600; text-align: right; white-space: nowrap; }
+.stop-state.ok { color: var(--ok); }
+.stop-state.need { color: #b45309; white-space: normal; }
+.stop-state.todo { color: var(--muted); font-weight: 400; }
+.btns { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.btns button { min-height: 34px; padding: 0 8px; border-radius: 999px; font-size: .8rem; font-weight: 600; border-width: 1.5px; }
+.nb { border: 2px solid #f0b37e; background: var(--card); color: #9a4b00; }
+.nb.on { background: #ef8a17; border-color: #ef8a17; color: #fff; }
+.nb.on::after { content: " ✓"; }
+.gb { border: 2px solid #9ccf9f; background: var(--card); color: var(--ok); }
+.gb.on { background: var(--ok); border-color: var(--ok); color: var(--brand-ink); }
+.sumbox { background: var(--warn-bg); border: 1px solid #f0b37e; border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.cl-list.one-col { columns: 1; }
+.need-txt { color: #b45309; font-weight: 600; }
+.ok-txt { color: var(--ok); }
+
+/* Time: compact punch list. */
+table.compact th, table.compact td { padding: 4px 5px; font-size: .82rem; white-space: nowrap; }
+table.compact td:first-child { white-space: normal; }
+table.compact tr.has-sub td { border-bottom: none; }
+table.compact tr.sub td { padding-top: 0; padding-bottom: 5px; font-size: .74rem; white-space: normal; }
+table.compact tr.sub .tag { font-size: .7rem; padding: 0 6px; }
+table.compact button.link { min-height: 22px; padding: 0 2px; font-size: .8rem; }
+table.compact tr.sub button.link { min-height: 18px; font-size: .74rem; }

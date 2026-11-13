@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderGuide, parseFollowups, parseChecklist } from '../public/md.js';
+import { renderGuide, parseFollowups, parseChecklist, parseRoute } from '../public/md.js';
 
 test('guide text is escaped (no HTML injection)', () => {
   const html = renderGuide('1. step <script>alert(1)</script>\n[x](javascript:alert(1))\n<img src=x onerror=alert(1)>');
@@ -57,4 +57,13 @@ test('notes in parentheses after a stop are left off its to-dos', () => {
   const f = parseFollowups(g);
   assert.deepEqual(f.map((x) => x.todo), ['Put out hay – Behind the barn', 'Put out hay – Sterling bulls']);
   assert.match(renderGuide(g, { checklist: true }), /Behind the barn \(15 bulls\)/);
+});
+
+test('parseRoute: stops, notes and needs line up with follow-up indexes', () => {
+  const g = 'Tap what each stop needs.\n\n## [ ] Behind the barn (15 bulls)\n[ ] Hay -> Put out hay\n[ ] Mineral -> Put out mineral\n\n## [ ] Church field\n\n## Lake field\n[ ] Hay -> Put out hay';
+  const r = parseRoute(g);
+  assert.equal(r.intro, 'Tap what each stop needs.');
+  assert.deepEqual(r.stops.map((s) => [s.name, s.note, s.needs.map((n) => n.index)]),
+    [['Behind the barn', '(15 bulls)', [0, 1]], ['Church field', '', []], ['Lake field', '', [2]]]);
+  assert.deepEqual(parseFollowups(g).map((f) => f.index), [0, 1, 2]);
 });

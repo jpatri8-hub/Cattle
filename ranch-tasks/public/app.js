@@ -1,4 +1,4 @@
-import { esc, renderGuide, parseFollowups } from './md.js';
+import { esc, renderGuide, parseRoute } from './md.js';
 import { describeRule, addDays, parseDate } from './recurrence.js';
 import { payPeriodOf, previousPayPeriod } from './payperiod.js';
 
@@ -367,29 +367,29 @@ async function refreshBadge() {
 
 // ---------- complete task ----------
 // checked: follow-up indexes ticked on the task page (null when opened from the list).
-async function completeTask(task, after, checked = null) {
-  // From the task list we only have a summary, so fetch the guide for its follow-ups.
-  const full = task.guide_id && !task.guide ? await api('GET', `/tasks/${task.id}`).catch(() => task) : task;
-  const ticked = new Set((checked || []).map(Number));
-  // From the task page, confirm just what was ticked there; from the list, offer every follow-up.
-  const followups = parseFollowups(full.guide?.body).filter((f) => checked === null || ticked.has(f.index));
+async function completeTask(task, after) {
+  // Fresh copy so a route shows the latest stop checks from everyone.
+  const full = task.guide_id ? await api('GET', `/tasks/${task.id}`).catch(() => task) : task;
+  const route = parseRoute(full.guide?.body);
+  let unchecked = [];
+  if (route.hasNeeds) {
+    let c = {};
+    try { c = JSON.parse(full.guide_checks || '{}'); } catch { /* none */ }
+    const good = new Set(c.good || []);
+    const fus = new Set(c.followups || []);
+    unchecked = route.stops.filter((s) => !good.has(s.index) && !s.needs.some((n) => fus.has(n.index))).map((s) => s.name);
+  }
   openModal(`<h2>Mark done: ${esc(task.title)}</h2>
     <form id="doneForm" class="stack">
-      ${followups.length ? `<div class="field"><label>Anything that needs doing?</label>
-        <p class="muted small" style="margin-top:0">Ticked items are grouped into one high-priority to-do per supply, open to anyone.${checked === null ? '' : ' Untick any you added by mistake.'}</p>
-        <div class="followup-list">${followups.map((f) => `<label class="inline-check"><input type="checkbox" name="fu" value="${f.index}" ${ticked.has(f.index) ? 'checked' : ''}>
-          <span>${esc(f.todo)}</span></label>`).join('')}</div></div>` : ''}
+      ${unchecked.length ? `<p class="warn">${unchecked.length} stop(s) not checked yet: ${unchecked.map(esc).join(', ')}</p>` : ''}
       <div class="field"><label for="dn">Notes for the owner (optional)</label>
         <textarea id="dn" name="notes" placeholder="Anything to report? Broken water float, low on mineral, etc."></textarea></div>
       <div class="row"><button class="primary grow" type="submit">✓ Mark complete</button><button type="button" data-close>Cancel</button></div>
     </form>`);
   $('#doneForm').addEventListener('submit', guard(async (e) => {
-    const followupsPicked = $$('input[name=fu]:checked', e.target).map((x) => Number(x.value));
-    const r = await api('POST', `/tasks/${task.id}/complete`, { notes: e.target.notes.value, followups: followupsPicked });
+    const r = await api('POST', `/tasks/${task.id}/complete`, { notes: e.target.notes.value });
     closeModal();
-    const made = r.created?.length ? ` New to-do: ${r.created.join('; ')}.` : '';
-    const dup = r.updated?.length ? ` Added stops to: ${r.updated.join('; ')}.` : '';
-    toast((r.next_due ? `Done! Next due ${fmtDay(r.next_due)}.` : r.repeated ? 'Done! It’s back on the list for next time.' : 'Done!') + made + dup);
+    toast(r.next_due ? `Done! Next due ${fmtDay(r.next_due)}.` : r.repeated ? 'Done! It’s back on the list for next time.' : 'Done!');
     refreshBadge();
     after?.();
   }));
@@ -406,7 +406,16 @@ function checklistHtml(raw, open = false) {
       <ul class="cl-list">${rows.map(([label, d, stop]) => `<li class="${d ? 'on' : ''}${stop ? ' stop' : ''}">
         <span class="box">${d ? '☑' : '☐'}</span> ${esc(label)}</li>`).join('')}</ul></details>`;
   };
+  const routeList = (rows) => {
+    const checked = rows.filter(([, good, needs]) => good || needs.length).length;
+    return `<details class="cl" ${open ? 'open' : ''}><summary>Stops: <b>${checked} of ${rows.length}</b> checked</summary>
+      <ul class="cl-list one-col">${rows.map(([name, good, needs]) => `<li class="${good || needs.length ? 'on' : ''}">
+        <span class="box">${good ? '✓' : needs.length ? '●' : '☐'}</span> ${esc(name)} —
+        ${good ? '<span class="ok-txt">all good</span>' : needs.length ? `<span class="need-txt">needs ${needs.map((n) => esc(n.toLowerCase())).join(', ')}</span>` : 'not checked'}
+      </li>`).join('')}</ul></details>`;
+  };
   return `<div class="checklist-snap">
+    ${c.route?.length ? routeList(c.route) : ''}
     ${c.steps?.length ? list(c.steps, 'Checklist') : ''}
     ${c.stops?.length ? list(c.stops, 'Stops') : ''}
     ${c.needs?.length ? `<div class="small"><b>Needs reported:</b> ${c.needs.map(esc).join(', ')}</div>` : ''}
@@ -427,6 +436,23 @@ document.addEventListener('click', (e) => {
   }
 });
 let livePoll = null;
+
+// Put a guide's ## sections (stops) in alphabetical order; text before the
+// first heading stays on top. Notes and needs move with their stop.
+function sortSections(body) {
+  const intro = [];
+  const sections = [];
+  let cur = null;
+  for (const line of String(body).replace(/\r/g, '').split('\n')) {
+    if (/^#{1,3}\s+/.test(line.trim())) sections.push((cur = [line]));
+    else if (cur) cur.push(line);
+    else intro.push(line);
+  }
+  const key = (sec) => sec[0].trim().replace(/^#{1,3}\s+/, '').replace(/^\[\s?\]\s+/, '').toLowerCase();
+  sections.sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true }));
+  const tidy = (lines) => { const a = [...lines]; while (a.length && !a[a.length - 1].trim()) a.pop(); return a.join('\n'); };
+  return [tidy(intro), ...sections.map(tidy)].filter((x) => x.trim()).join('\n\n') + '\n';
+}
 
 // ===================== VIEWS =====================
 
@@ -541,6 +567,7 @@ async function viewTask(id) {
   const asList = (v) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
   const stops = asList(t.followup_stops);
   const doneStops = new Set(asList(t.followup_done));
+  const route = parseRoute(t.guide?.body);
   main.innerHTML = `
     <p><a href="#/" data-back>← Back</a></p>
     <div class="card">
@@ -568,9 +595,10 @@ async function viewTask(id) {
         ${prop && t.property_has_photo ? `<div style="margin-top:8px">${photoWithMarks(prop, [{ marks: t.marks, cls: 'mark' }])}</div>
           <p class="small" style="margin-bottom:0"><a href="${photoUrl(prop)}" target="_blank" rel="noopener">Open full-size photo</a> (pinch to zoom)</p>` : ''}
       </div>` : ''}
-    ${t.guide ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
+    ${t.guide && route.hasNeeds ? '<div class="card" id="routeBox"></div>' : ''}
+    ${t.guide && !route.hasNeeds ? `<div class="card"><div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
         <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
-        <p class="muted small">Tick off steps as you go.${parseFollowups(t.guide.body).length ? ' Ticked needs become one to-do per supply when you mark this complete.' : ''}</p>
+        <p class="muted small">Tick off steps as you go.</p>
         <div class="guide-body" id="guideBody">${renderGuide(t.guide.body, { checklist: true })}</div></div>` : ''}
     ${t.status === 'open' ? '<button class="primary big" id="doneBtn2" style="margin-bottom:12px">✓ Mark complete</button>' : ''}
     <div class="card"><h2 style="margin-top:0">History</h2>
@@ -589,8 +617,7 @@ async function viewTask(id) {
       ${canEdit && t.status === 'open' ? '<button class="danger" id="archiveBtn">Archive</button>' : ''}
       ${canEdit && t.status !== 'open' ? '<button id="reopenBtn">Reopen</button>' : ''}
     </div>`;
-  const markDone = () => completeTask(t, render,
-    $$('#guideBody input[data-followup]:checked').map((x) => x.dataset.followup));
+  const markDone = () => completeTask(t, render);
   $('#doneBtn')?.addEventListener('click', markDone);
   $('#doneBtn2')?.addEventListener('click', markDone);
   $$('input[data-stop]').forEach((cb) => cb.addEventListener('change', async () => {
@@ -612,6 +639,59 @@ async function viewTask(id) {
   };
   applyChecks(t.guide_checks);
   if (t.status !== 'open') $$('#guideBody input').forEach((cb) => { cb.disabled = true; });
+
+  // Route: tap a need (adds the stop to that supply's to-do right away) or All good.
+  let routeChecks = {};
+  try { routeChecks = JSON.parse(t.guide_checks || '{}'); } catch { /* none yet */ }
+  const paintRoute = () => {
+    const box = $('#routeBox');
+    if (!box) return;
+    const good = new Set(routeChecks.good || []);
+    const fus = new Set(routeChecks.followups || []);
+    const off = t.status === 'open' ? '' : 'disabled';
+    const rows = route.stops.map((s) => ({ s, needs: s.needs.filter((n) => fus.has(n.index)), good: good.has(s.index) }));
+    const checkedCount = rows.filter((r) => r.good || r.needs.length).length;
+    const todo = new Map();
+    rows.forEach((r) => r.needs.forEach((n) => { if (!todo.has(n.action)) todo.set(n.action, []); todo.get(n.action).push(r.s.name); }));
+    box.innerHTML = `<div class="row between"><h2 style="margin:0">📘 ${esc(t.guide.title)}</h2>
+        <a href="#/guide/${t.guide.id}" class="small">Open guide</a></div>
+      <div class="progress"><div style="width:${route.stops.length ? Math.round((checkedCount / route.stops.length) * 100) : 0}%"></div></div>
+      <div class="small"><b>${checkedCount} of ${route.stops.length} stops checked</b></div>
+      ${route.intro ? `<div class="guide-body small muted">${renderGuide(route.intro)}</div>` : ''}
+      ${rows.map(({ s, needs, good: ok }) => `<div class="stop-row">
+        <div class="stop-head"><span class="stop-name">${esc(s.name)}${s.note ? ` <span class="stop-note">${esc(s.note)}</span>` : ''}</span>
+          <span class="stop-state ${ok ? 'ok' : needs.length ? 'need' : 'todo'}">${ok ? '✓ All good'
+            : needs.length ? 'Needs ' + needs.map((n) => esc(n.label.toLowerCase())).join(', ') : 'Not checked yet'}</span></div>
+        <div class="btns">${s.needs.map((n) => `<button type="button" class="nb ${fus.has(n.index) ? 'on' : ''}" data-need="${n.index}" ${off}>${esc(n.label)}</button>`).join('')}
+          <button type="button" class="gb ${ok ? 'on' : ''}" data-good="${s.index}" ${off}>✓ All good</button></div>
+      </div>`).join('')}
+      ${todo.size ? `<div class="sumbox"><b>On the to-do list from this route</b>
+        <div class="small">${[...todo].map(([a, names]) => `• ${esc(a)}: ${names.map(esc).join(', ')}`).join('<br>')}</div></div>` : ''}`;
+  };
+  paintRoute();
+  $('#routeBox')?.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-need], [data-good]');
+    if (!b || b.disabled) return;
+    const on = b.classList.contains('on');
+    let body;
+    if (b.dataset.need != null) {
+      body = { kind: 'followup', index: Number(b.dataset.need), checked: !on };
+    } else {
+      const stop = route.stops[Number(b.dataset.good)];
+      const tapped = stop.needs.filter((n) => (routeChecks.followups || []).includes(n.index));
+      if (!on && tapped.length && !confirm(`Mark ${stop.name} all good? That takes it off: ${tapped.map((n) => n.action).join(', ')}.`)) return;
+      body = { kind: 'good', index: stop.index, checked: !on };
+    }
+    $$('#routeBox button').forEach((x) => { x.disabled = true; });
+    try {
+      const r = await api('PUT', `/tasks/${t.id}/checks`, body);
+      routeChecks = r.checks;
+      if (r.message) toast(r.message);
+    } catch (err) {
+      toast(err.message, true);
+    }
+    paintRoute();
+  });
   $$('#guideBody input[data-step], #guideBody input[data-followup]').forEach((cb) => cb.addEventListener('change', async () => {
     const isStep = cb.dataset.step != null;
     try {
@@ -631,6 +711,8 @@ async function viewTask(id) {
         const fresh = await api('GET', `/tasks/${t.id}`);
         if (fresh.status !== 'open') return render();
         applyChecks(fresh.guide_checks);
+        try { routeChecks = JSON.parse(fresh.guide_checks || '{}'); } catch { routeChecks = {}; }
+        paintRoute();
         const done = new Set(asList(fresh.followup_done));
         $$('input[data-stop]').forEach((cb) => { cb.checked = done.has(stops[Number(cb.dataset.stop)]); });
         if ($('#stopCount')) $('#stopCount').textContent = `${done.size} of ${stops.length} done`;
@@ -907,10 +989,15 @@ async function viewGuideForm(id) {
           <p><b>Stops:</b> <code>## [ ] Sharpers</code> makes a heading with its own tick-box to mark off as you go.
           Add notes in parentheses after the name, like <code>## [ ] Behind the barn (15 bulls)</code>: the note shows in the
           guide, but to-dos just say “Behind the barn”.</p></details></div>
-      <div class="row"><button class="primary grow" type="submit">Save guide</button><button type="button" id="prev">Preview</button></div>
+      <div class="row"><button class="primary grow" type="submit">Save guide</button><button type="button" id="prev">Preview</button>
+        <button type="button" id="sortStops" title="Put the ## headings (stops) in alphabetical order">Sort stops A–Z</button></div>
       <div class="guide-body card hidden" id="preview" style="margin-top:12px"></div>
     </form>`;
   const f = $('#gForm');
+  $('#sortStops').addEventListener('click', () => {
+    f.body.value = sortSections(f.body.value);
+    toast('Stops sorted A–Z. Tap Save guide to keep it.');
+  });
   $('#prev').addEventListener('click', () => {
     $('#preview').classList.remove('hidden');
     $('#preview').innerHTML = renderGuide(f.body.value);
@@ -1073,14 +1160,14 @@ async function viewTime(query) {
     <div class="section-title"><h2>${isOwner() ? 'All punches' : 'My punches'}</h2></div>
     <div class="row" style="margin-bottom:8px"><button id="addPunch">+ Add missed punch</button>
       ${isOwner() ? '<button id="addPto">+ Add PTO</button>' : ''}</div>
-    <div class="card table-wrap"><table><thead><tr>${isOwner() ? '<th>Who</th>' : ''}<th>Date</th><th>In</th><th>Out</th><th class="num">Hrs</th><th></th></tr></thead><tbody>
+    <div class="card table-wrap"><table class="compact"><thead><tr>${isOwner() ? '<th>Who</th>' : ''}<th>Date</th><th>In</th><th>Out</th><th class="num">Hrs</th><th></th></tr></thead><tbody>
       ${entries.map((e) => {
         const tags = punchTags(e);
         const inOut = e.kind === 'pto' ? '<td colspan="2"><span class="tag ok">PTO</span></td>'
           : `<td>${fmtTime(e.clock_in)}</td><td>${e.clock_out ? fmtTime(e.clock_out) : '<span class="tag pending">on clock</span>'}</td>`;
-        return `<tr>${isOwner() ? `<td>${esc(e.name)}</td>` : ''}<td>${fmtDay(e.work_date)}</td>${inOut}<td class="num">${hrs(hoursOf(e))}</td>
+        return `<tr class="${tags || e.note ? 'has-sub' : ''}">${isOwner() ? `<td>${esc(e.name)}</td>` : ''}<td>${fmtDay(e.work_date)}</td>${inOut}<td class="num">${hrs(hoursOf(e))}</td>
           <td class="right">${canEdit(e) ? `<button class="link" data-edit="${e.id}">Edit</button>` : ''}</td></tr>
-          ${tags || e.note ? `<tr><td colspan="${isOwner() ? 6 : 5}" class="small" style="border-top:none;padding-top:0">${tags}
+          ${tags || e.note ? `<tr class="sub"><td colspan="${isOwner() ? 6 : 5}">${tags}
             ${e.note ? `<span class="muted">${esc(e.note)}</span>` : ''}
             ${tags ? `<button class="link small" data-hist="${e.id}">History</button>` : ''}</td></tr>` : ''}`;
       }).join('') || '<tr><td colspan="6" class="muted">No punches.</td></tr>'}
