@@ -25,3 +25,7 @@ class Config:
         os.environ.get("DATABASE_URL", f"sqlite:///{os.path.join(basedir, 'instance', 'cattle.db')}")
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Neon's compute auto-suspends after a few minutes idle; without this, the
+    # pool hands out a dead connection on the first request after a gap and it
+    # fails outright instead of transparently reconnecting.
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
