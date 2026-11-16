@@ -137,6 +137,9 @@ def new_sale():
         if single:
             preselect_ids = [single]
         preselected = set(preselect_ids or [])
+        preselect_buyer = request.args.get("buyer_id", type=int)
+        if preselect_buyer:
+            form.buyer_id.data = preselect_buyer
     else:
         preselected = set()
 
@@ -294,10 +297,10 @@ def new_buyer():
         db.session.commit()
         flash(f"Buyer {buyer.name} added.", "success")
         if next_page == "rental":
-            return redirect(url_for("rentals.new_rental"))
+            return redirect(url_for("rentals.new_rental", buyer_id=buyer.id))
         if not current_user.is_owner:
             return redirect(url_for("rentals.list_rentals"))
-        return redirect(url_for("sales.new_sale"))
+        return redirect(url_for("sales.new_sale", buyer_id=buyer.id))
 
     return render_template("sales/buyer_form.html", form=form, title="New Buyer", next=next_page)
 

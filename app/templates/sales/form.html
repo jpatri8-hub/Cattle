@@ -15,7 +15,7 @@
       {{ form.buyer_id.label(class="form-label") }}
       <div class="input-group">
         {{ form.buyer_id(class="form-select") }}
-        <a class="btn btn-outline-secondary" href="{{ url_for('sales.new_buyer') }}">+ New</a>
+        <a id="newBuyerLink" class="btn btn-outline-secondary" href="{{ url_for('sales.new_buyer') }}">+ New</a>
       </div>
     </div>
     <div class="col-md-4 mb-3">{{ form.sale_date.label(class="form-label") }} {{ form.sale_date(class="form-control") }}</div>
@@ -201,8 +201,57 @@ function renderPerAnimalBlock() {
   container.appendChild(table);
 }
 
+var SALE_DRAFT_KEY = 'cattleManagerSaleDraft';
+
+function collectEnteredValues() {
+  var values = {};
+  document.querySelectorAll('#truckloadBlock input, #perAnimalBlock input').forEach(function (input) {
+    if (input.type !== 'checkbox' && input.value !== '') values[input.name] = input.value;
+  });
+  return values;
+}
+
+function saveDraftAndContinue() {
+  try {
+    sessionStorage.setItem(SALE_DRAFT_KEY, JSON.stringify({
+      selected: Array.from(selected),
+      category: document.getElementById('categorySelect').value,
+      saleDate: document.getElementById('sale_date').value,
+      paymentMethod: document.getElementById('payment_method').value,
+      notes: document.getElementById('notes').value,
+      values: collectEnteredValues(),
+    }));
+  } catch (e) { /* storage unavailable - worst case, the draft just won't restore */ }
+}
+
+function restoreDraftIfAny() {
+  var params = new URLSearchParams(window.location.search);
+  if (!params.get('buyer_id')) return false;
+  var raw;
+  try { raw = sessionStorage.getItem(SALE_DRAFT_KEY); } catch (e) { return false; }
+  if (!raw) return false;
+  sessionStorage.removeItem(SALE_DRAFT_KEY);
+  var draft;
+  try { draft = JSON.parse(raw); } catch (e) { return false; }
+
+  if (draft.category) document.getElementById('categorySelect').value = draft.category;
+  if (draft.saleDate) document.getElementById('sale_date').value = draft.saleDate;
+  if (draft.paymentMethod) document.getElementById('payment_method').value = draft.paymentMethod;
+  if (draft.notes) document.getElementById('notes').value = draft.notes;
+  (draft.selected || []).forEach(function (id) { if (ANIMALS_BY_ID[id]) selected.add(id); });
+  renderSelected();
+  Object.keys(draft.values || {}).forEach(function (name) {
+    var input = document.querySelector('[name="' + name + '"]');
+    if (input) input.value = draft.values[name];
+  });
+  return true;
+}
+
 document.getElementById('animalSearch').addEventListener('input', renderSearch);
 document.getElementById('categorySelect').addEventListener('change', renderSelected);
-document.addEventListener('DOMContentLoaded', renderSelected);
+document.getElementById('newBuyerLink').addEventListener('click', saveDraftAndContinue);
+document.addEventListener('DOMContentLoaded', function () {
+  if (!restoreDraftIfAny()) renderSelected();
+});
 </script>
 {% endblock %}

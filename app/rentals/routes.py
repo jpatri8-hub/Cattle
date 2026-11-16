@@ -66,6 +66,9 @@ def new_rental():
     if request.method == "GET":
         preselect = request.args.get("bull_id", type=int)
         form.bull_id.data = preselect or 0
+        preselect_buyer = request.args.get("buyer_id", type=int)
+        if preselect_buyer:
+            form.customer_id.data = preselect_buyer
 
     if form.validate_on_submit():
         bull_id = form.bull_id.data or None
