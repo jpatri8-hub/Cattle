@@ -1,6 +1,8 @@
 from datetime import date, datetime, timedelta
+from functools import cached_property
 import re
 
+from flask import g
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -167,6 +169,20 @@ animal_candidate_sires = db.Table(
 )
 
 
+def _location_has_breeding_females(location_id):
+    """Whether an active cow/heifer is currently at this location. Cached per
+    request (keyed by location) so checking a herd's worth of bulls for
+    rental availability doesn't re-run this query once per bull."""
+    cache = g.setdefault("_location_has_breeding_females_cache", {})
+    if location_id not in cache:
+        females = Animal.query.filter_by(location_id=location_id, is_active=True, sex=SEX_FEMALE).all()
+        cache[location_id] = any(
+            a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
+            for a in females
+        )
+    return cache[location_id]
+
+
 class Animal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tag_id = db.Column(db.String(40), index=True)  # not unique - duplicate tags are allowed; `id` is the true unique identifier
@@ -251,7 +267,7 @@ class Animal(db.Model):
     )
     sale_lines = db.relationship("SaleLine", backref="animal")
 
-    @property
+    @cached_property
     def current_weight(self):
         if self.weight_records:
             return self.weight_records[0].weight
@@ -288,13 +304,13 @@ class Animal(db.Model):
     def is_male_calf(self):
         return self.sex == SEX_MALE and self.animal_type and "Calf" in self.animal_type.name
 
-    @property
+    @cached_property
     def last_seen_date(self):
         dates = [c.date_recorded for c in self.last_seen_checks]
         dates += [h.date_recorded for h in self.health_records if h.record_type == "vaccination"]
         return max(dates) if dates else None
 
-    @property
+    @cached_property
     def not_seen_flagged(self):
         if not self.is_active:
             return False
@@ -303,11 +319,11 @@ class Animal(db.Model):
             return True
         return (date.today() - last).days > NOT_SEEN_FLAG_DAYS
 
-    @property
+    @cached_property
     def latest_semen_test(self):
         return self.semen_tests[0] if self.semen_tests else None
 
-    @property
+    @cached_property
     def current_semen_status(self):
         """One of SEMEN_NOT_TESTED / SEMEN_BAD / SEMEN_GOOD / SEMEN_RETEST. A
         Good result older than SEMEN_TEST_VALID_DAYS no longer counts as
@@ -322,11 +338,11 @@ class Animal(db.Model):
             return SEMEN_GOOD
         return test.result
 
-    @property
+    @cached_property
     def latest_rental(self):
         return self.rentals[0] if self.rentals else None
 
-    @property
+    @cached_property
     def rental_unavailable_reason(self):
         """Returns a reason string if a bull is unavailable for rent, else None."""
         if not self.is_bull:
@@ -338,16 +354,8 @@ class Animal(db.Model):
         )
         if open_rental:
             return "Out on rent" if open_rental.status == RENTAL_ACTIVE else "Committed to a rental"
-        if self.location_id:
-            with_females = Animal.query.filter_by(
-                location_id=self.location_id, is_active=True, sex=SEX_FEMALE
-            ).all()
-            with_females = [
-                a for a in with_females
-                if a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
-            ]
-            if with_females:
-                return f"With cows/heifers at {self.location.display_name if self.location else 'current location'}"
+        if self.location_id and _location_has_breeding_females(self.location_id):
+            return f"With cows/heifers at {self.location.display_name if self.location else 'current location'}"
         last_returned = next((r for r in self.rentals if r.status == RENTAL_RETURNED and r.actual_return_date), None)
         if last_returned:
             days_since = (date.today() - last_returned.actual_return_date).days
@@ -358,11 +366,11 @@ class Animal(db.Model):
             return f"Semen test: {semen_status}"
         return None
 
-    @property
+    @cached_property
     def is_rentable_available(self):
         return self.is_bull and self.is_active and self.rental_unavailable_reason is None
 
-    @property
+    @cached_property
     def has_calf_at_side(self):
         return any(
             c.weaned_date is None and c.calf_animal and c.calf_animal.is_active

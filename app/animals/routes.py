@@ -22,6 +22,7 @@ from app.models import (
     Location, RENTAL_ACTIVE, RENTAL_BOOKED, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
 )
 from app.pedigree import coefficient_of_inbreeding_pct
+from sqlalchemy.orm import joinedload, selectinload
 
 animals_bp = Blueprint("animals", __name__, url_prefix="/animals")
 
@@ -71,7 +72,14 @@ def list_animals():
     cripple = request.args.get("cripple") == "1"
     q = (request.args.get("q") or "").strip()
 
-    query = Animal.query
+    query = Animal.query.options(
+        joinedload(Animal.animal_type),
+        joinedload(Animal.location),
+        selectinload(Animal.last_seen_checks),
+        selectinload(Animal.health_records),
+        selectinload(Animal.semen_tests),
+        selectinload(Animal.calf_records_as_dam).joinedload(CalfRecord.calf_animal),
+    )
     if current_only:
         query = query.filter_by(is_active=True)
     else:
@@ -531,7 +539,17 @@ def import_csv():
 @login_required
 def list_cows():
     cows = [
-        a for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_FEMALE).all(), key=animal_sort_key)
+        a for a in sorted(
+            Animal.query.filter_by(is_active=True, sex=SEX_FEMALE)
+            .options(
+                joinedload(Animal.animal_type),
+                joinedload(Animal.location),
+                selectinload(Animal.calf_records_as_dam).joinedload(CalfRecord.calf_animal),
+                selectinload(Animal.exposure_records),
+            )
+            .all(),
+            key=animal_sort_key,
+        )
         if a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
     ]
     return render_template("animals/cows_list.html", cows=cows)
@@ -772,7 +790,21 @@ def confirm_bred(exposure_id):
 def list_bulls():
     low_bw = request.args.get("low_bw") == "1"
     cripple = request.args.get("cripple") == "1"
-    bulls = [a for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_MALE).all(), key=animal_sort_key) if a.is_bull]
+    bulls = [
+        a for a in sorted(
+            Animal.query.filter_by(is_active=True, sex=SEX_MALE)
+            .options(
+                joinedload(Animal.animal_type),
+                joinedload(Animal.location),
+                joinedload(Animal.epd),
+                selectinload(Animal.semen_tests),
+                selectinload(Animal.rentals),
+            )
+            .all(),
+            key=animal_sort_key,
+        )
+        if a.is_bull
+    ]
     if low_bw:
         bulls = [b for b in bulls if b.is_low_birth_weight_candidate]
     if cripple:

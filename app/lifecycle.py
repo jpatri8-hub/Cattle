@@ -6,6 +6,8 @@ than on a schedule, since the app has no background worker.
 """
 from datetime import date, timedelta
 
+from sqlalchemy.orm import joinedload, selectinload
+
 from app import db
 from app.models import (
     Animal, AnimalType, BreedingGroup, CalfRecord, ExposureRecord, LastSeenCheck, Location, Rental,
@@ -232,16 +234,29 @@ def auto_sync_breeding_exposure(commit=True):
     return changes
 
 
-def not_seen_alerts():
+def not_seen_alerts(animals=None):
+    """Pass in an already-loaded, eager-loaded list of active animals (e.g.
+    from the dashboard) to avoid a second full fetch - each animal here reads
+    last_seen_checks and health_records, which is expensive to lazy-load
+    per-animal."""
+    if animals is None:
+        animals = Animal.query.filter_by(is_active=True).options(
+            selectinload(Animal.last_seen_checks), selectinload(Animal.health_records),
+        ).all()
     return sorted(
-        (a for a in Animal.query.filter_by(is_active=True).all() if a.not_seen_flagged),
+        (a for a in animals if a.not_seen_flagged),
         key=lambda a: a.last_seen_date or date.min,
     )
 
 
-def semen_test_alerts():
+def semen_test_alerts(animals=None):
+    """See not_seen_alerts() - same reuse-the-dashboard's-list reasoning."""
+    if animals is None:
+        animals = Animal.query.filter_by(is_active=True).options(
+            joinedload(Animal.animal_type), selectinload(Animal.semen_tests),
+        ).all()
     alerts = []
-    for a in Animal.query.filter_by(is_active=True).all():
+    for a in animals:
         if not a.is_bull:
             continue
         test = a.latest_semen_test
@@ -256,14 +271,3 @@ def semen_test_alerts():
 
 def rental_overdue_alerts():
     return Rental.query.filter(Rental.status == RENTAL_ACTIVE, Rental.end_date < date.today()).all()
-
-
-def run_lifecycle_checks():
-    """Convenience entry point called from the dashboard on each load."""
-    apply_age_transfers()
-    auto_sync_breeding_exposure()
-    return {
-        "not_seen": not_seen_alerts(),
-        "semen": semen_test_alerts(),
-        "rentals_overdue": rental_overdue_alerts(),
-    }

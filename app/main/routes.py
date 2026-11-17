@@ -3,7 +3,12 @@ from datetime import date, timedelta
 from flask import Blueprint, render_template
 from flask_login import current_user, login_required
 
-from app.lifecycle import run_lifecycle_checks
+from sqlalchemy.orm import joinedload, selectinload
+
+from app.lifecycle import (
+    apply_age_transfers, auto_sync_breeding_exposure, not_seen_alerts,
+    rental_overdue_alerts, semen_test_alerts,
+)
 from app.models import Animal, HealthRecord, Rental, Sale, RENTAL_ACTIVE, RENTAL_BOOKED
 
 main_bp = Blueprint("main", __name__)
@@ -12,7 +17,24 @@ main_bp = Blueprint("main", __name__)
 @main_bp.route("/")
 @login_required
 def dashboard():
-    active_animals = Animal.query.filter_by(is_active=True).all()
+    # Run any pending age/breeding-exposure mutations first, before the
+    # eager-loaded fetch below - each commits, which expires every loaded
+    # attribute on every object in the session, so running them after the
+    # fetch would silently force each eager-loaded relationship back to
+    # being re-fetched one animal at a time.
+    if current_user.is_owner:
+        apply_age_transfers()
+        auto_sync_breeding_exposure()
+
+    active_animals = Animal.query.filter_by(is_active=True).options(
+        joinedload(Animal.animal_type),
+        joinedload(Animal.location),
+        joinedload(Animal.calf_record),
+        selectinload(Animal.rentals),
+        selectinload(Animal.semen_tests),
+        selectinload(Animal.last_seen_checks),
+        selectinload(Animal.health_records),
+    ).all()
     bulls_available = len([a for a in active_animals if a.is_rentable_available])
 
     # A calf isn't counted on the farm-wide tallies until she's weaned - a
@@ -67,10 +89,13 @@ def dashboard():
             (s.total_price for s in Sale.query.filter(Sale.sale_date >= date(today.year, 1, 1)).all()),
             0,
         )
-        alerts = run_lifecycle_checks()
+        alerts = {
+            "not_seen": not_seen_alerts(active_animals),
+            "semen": semen_test_alerts(active_animals),
+            "rentals_overdue": rental_overdue_alerts(),
+        }
     else:
-        from app.lifecycle import not_seen_alerts
-        alerts["not_seen"] = not_seen_alerts()
+        alerts["not_seen"] = not_seen_alerts(active_animals)
 
     return render_template(
         "main/dashboard.html",
