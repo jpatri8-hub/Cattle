@@ -8,7 +8,15 @@
     {% if rental.is_overdue %}<span class="badge bg-danger">Overdue</span>{% endif %}
     {% if rental.return_condition_score %}<span class="badge bg-info text-dark">Returned: {{ rental.return_condition_score }}</span>{% endif %}
   </h2>
-  <a href="{{ url_for('rentals.edit_rental', rental_id=rental.id) }}" class="btn btn-outline-primary no-print">Edit</a>
+  <div class="no-print">
+    <a href="{{ url_for('rentals.edit_rental', rental_id=rental.id) }}" class="btn btn-outline-primary">Edit</a>
+    {% if rental.status == 'booked' %}
+    <form method="post" action="{{ url_for('rentals.cancel_rental', rental_id=rental.id) }}" class="d-inline" onsubmit="return confirm('Cancel this rental? It will no longer count toward availability or revenue.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline-danger">Cancel Rental</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
 <div class="row">

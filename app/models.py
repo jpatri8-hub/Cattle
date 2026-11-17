@@ -554,6 +554,8 @@ class Rental(db.Model):
 
     @property
     def revenue(self):
+        if self.status == RENTAL_CANCELLED:
+            return 0
         if self.rate_type == "daily" and self.rate:
             end = self.actual_return_date or self.end_date
             days = max((end - self.start_date).days, 0) + 1
