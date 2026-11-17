@@ -3,7 +3,9 @@ from datetime import date, timedelta
 from flask import Blueprint, render_template
 from flask_login import current_user, login_required
 
-from app.lifecycle import run_lifecycle_checks
+from sqlalchemy.orm import joinedload, selectinload
+
+from app.lifecycle import apply_age_transfers, auto_sync_breeding_exposure
 from app.models import Animal, HealthRecord, Rental, Sale, RENTAL_ACTIVE, RENTAL_BOOKED
 
 main_bp = Blueprint("main", __name__)
@@ -12,7 +14,22 @@ main_bp = Blueprint("main", __name__)
 @main_bp.route("/")
 @login_required
 def dashboard():
-    active_animals = Animal.query.filter_by(is_active=True).all()
+    # Run any pending age/breeding-exposure mutations first, before the
+    # eager-loaded fetch below - each commits, which expires every loaded
+    # attribute on every object in the session, so running them after the
+    # fetch would silently force each eager-loaded relationship back to
+    # being re-fetched one animal at a time.
+    if current_user.is_owner:
+        apply_age_transfers()
+        auto_sync_breeding_exposure()
+
+    active_animals = Animal.query.filter_by(is_active=True).options(
+        joinedload(Animal.animal_type),
+        joinedload(Animal.location),
+        joinedload(Animal.calf_record),
+        selectinload(Animal.rentals),
+        selectinload(Animal.semen_tests),
+    ).all()
     bulls_available = len([a for a in active_animals if a.is_rentable_available])
 
     # A calf isn't counted on the farm-wide tallies until she's weaned - a
@@ -60,17 +77,12 @@ def dashboard():
 
     recent_sales = []
     sales_this_year_total = None
-    alerts = {"not_seen": [], "semen": [], "rentals_overdue": []}
     if current_user.is_owner:
         recent_sales = Sale.query.order_by(Sale.sale_date.desc()).limit(5).all()
         sales_this_year_total = sum(
             (s.total_price for s in Sale.query.filter(Sale.sale_date >= date(today.year, 1, 1)).all()),
             0,
         )
-        alerts = run_lifecycle_checks()
-    else:
-        from app.lifecycle import not_seen_alerts
-        alerts["not_seen"] = not_seen_alerts()
 
     return render_template(
         "main/dashboard.html",
@@ -83,5 +95,4 @@ def dashboard():
         overdue_vaccines=overdue_vaccines,
         recent_sales=recent_sales,
         sales_this_year_total=sales_this_year_total,
-        alerts=alerts,
     )

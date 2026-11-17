@@ -7,8 +7,8 @@ from app import db
 from app.forms import RentalCheckForm, RentalForm
 from app.lifecycle import log_location_change_seen_check
 from app.models import (
-    Animal, animal_sort_key, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_RETURNED,
-    Rental, RentalCheck,
+    Animal, animal_sort_key, Buyer, Location, RENTAL_ACTIVE, RENTAL_BOOKED, RENTAL_CANCELLED,
+    RENTAL_RETURNED, Rental, RentalCheck,
 )
 
 rentals_bp = Blueprint("rentals", __name__, url_prefix="/rentals")
@@ -156,6 +156,23 @@ def view_rental(rental_id):
         (l.id, l.display_name) for l in Location.query.filter_by(is_active=True).order_by(Location.name).all()
     ]
     return render_template("rentals/detail.html", rental=rental, check_form=check_form)
+
+
+@rentals_bp.route("/<int:rental_id>/cancel", methods=["POST"])
+@login_required
+def cancel_rental(rental_id):
+    rental = Rental.query.get_or_404(rental_id)
+    if rental.status != RENTAL_BOOKED:
+        flash(
+            "Only a rental that's still Booked (not yet picked up) can be cancelled - "
+            "log a return instead if the bull is already out.",
+            "warning",
+        )
+    else:
+        rental.status = RENTAL_CANCELLED
+        db.session.commit()
+        flash("Rental cancelled.", "success")
+    return redirect(url_for("rentals.view_rental", rental_id=rental.id))
 
 
 @rentals_bp.route("/<int:rental_id>/check", methods=["POST"])

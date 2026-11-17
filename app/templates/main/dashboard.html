@@ -35,45 +35,6 @@
   </div>
 </div>
 
-{% if alerts.not_seen or alerts.semen or alerts.rentals_overdue %}
-<div class="card card-dashboard p-3 mb-4 border-warning">
-  <h5 class="text-warning-emphasis">⚠ Flags Needing Attention</h5>
-  <div class="row">
-    {% if alerts.not_seen %}
-    <div class="col-md-4">
-      <h6>Not Seen in 4+ Months ({{ alerts.not_seen|length }})</h6>
-      <ul class="list-group list-group-flush">
-        {% for a in alerts.not_seen[:8] %}
-        <li class="list-group-item"><a href="{{ url_for('animals.view_animal', animal_id=a.id) }}">{{ a.display_id }}</a> <small class="text-muted">last seen {{ a.last_seen_date or "never" }}</small></li>
-        {% endfor %}
-      </ul>
-      {% if alerts.not_seen|length > 8 %}<a href="{{ url_for('animals.list_animals', flagged=1) }}" class="small">See all &rarr;</a>{% endif %}
-    </div>
-    {% endif %}
-    {% if alerts.semen %}
-    <div class="col-md-4">
-      <h6>Bulls Needing Semen Test ({{ alerts.semen|length }})</h6>
-      <ul class="list-group list-group-flush">
-        {% for bull, reason in alerts.semen[:8] %}
-        <li class="list-group-item"><a href="{{ url_for('animals.view_animal', animal_id=bull.id) }}">{{ bull.display_id }}</a> <small class="text-muted">{{ reason }}</small></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-    {% if alerts.rentals_overdue %}
-    <div class="col-md-4">
-      <h6>Overdue Rentals ({{ alerts.rentals_overdue|length }})</h6>
-      <ul class="list-group list-group-flush">
-        {% for r in alerts.rentals_overdue %}
-        <li class="list-group-item"><a href="{{ url_for('rentals.view_rental', rental_id=r.id) }}">{{ r.display_bull }} - {{ r.customer.name }}</a> <small class="text-muted">due {{ r.end_date }}</small></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-  </div>
-</div>
-{% endif %}
-
 <div class="row">
   <div class="col-md-6 mb-4">
     <div class="card card-dashboard p-3">

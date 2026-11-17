@@ -8,9 +8,8 @@ from datetime import date, timedelta
 
 from app import db
 from app.models import (
-    Animal, AnimalType, BreedingGroup, CalfRecord, ExposureRecord, LastSeenCheck, Location, Rental,
-    RENTAL_ACTIVE, SEMEN_BAD, SEMEN_RETEST, SEX_FEMALE, SEX_MALE,
-    TRANSFER_TRIGGER_AGE, TRANSFER_TRIGGER_WEANED,
+    Animal, AnimalType, BreedingGroup, CalfRecord, ExposureRecord, LastSeenCheck, Location,
+    SEX_FEMALE, SEX_MALE, TRANSFER_TRIGGER_AGE, TRANSFER_TRIGGER_WEANED,
 )
 
 GESTATION_MIN_DAYS = 270
@@ -29,6 +28,23 @@ def log_location_change_seen_check(animal, new_location_id, seen_by_id, date_rec
         location_id=new_location_id, health_status="Healthy",
         notes=notes or "Seen - location updated.", seen_by_id=seen_by_id,
     ))
+
+
+def weaning_grade_required(animal, new_location_id, dam_also_moving=False):
+    """True if moving `animal` to new_location_id would separate an
+    un-graded calf from its dam's current location - i.e. a weaning move
+    that needs a quality grade recorded first (on the calf's own page).
+    `dam_also_moving` should be set when the dam is being moved to the same
+    new_location_id in the same batch - that's not a separation."""
+    record = animal.calf_record
+    if not record or record.quality:
+        return False
+    dam = record.dam
+    if not dam or not dam.location_id:
+        return False
+    if dam_also_moving:
+        return False
+    return animal.location_id == dam.location_id and new_location_id != dam.location_id
 
 
 def compute_candidate_sires(animal):
@@ -232,38 +248,3 @@ def auto_sync_breeding_exposure(commit=True):
     return changes
 
 
-def not_seen_alerts():
-    return sorted(
-        (a for a in Animal.query.filter_by(is_active=True).all() if a.not_seen_flagged),
-        key=lambda a: a.last_seen_date or date.min,
-    )
-
-
-def semen_test_alerts():
-    alerts = []
-    for a in Animal.query.filter_by(is_active=True).all():
-        if not a.is_bull:
-            continue
-        test = a.latest_semen_test
-        if test is None:
-            alerts.append((a, "No semen test on record"))
-        elif test.result in (SEMEN_BAD, SEMEN_RETEST):
-            alerts.append((a, f"Semen test result: {test.result}"))
-        elif (date.today() - test.test_date).days > 365:
-            alerts.append((a, "Yearly semen test overdue"))
-    return alerts
-
-
-def rental_overdue_alerts():
-    return Rental.query.filter(Rental.status == RENTAL_ACTIVE, Rental.end_date < date.today()).all()
-
-
-def run_lifecycle_checks():
-    """Convenience entry point called from the dashboard on each load."""
-    apply_age_transfers()
-    auto_sync_breeding_exposure()
-    return {
-        "not_seen": not_seen_alerts(),
-        "semen": semen_test_alerts(),
-        "rentals_overdue": rental_overdue_alerts(),
-    }

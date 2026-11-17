@@ -14,7 +14,7 @@ from app.forms import (
 from app.lifecycle import (
     apply_candidate_sires, apply_weaning_transfer, auto_sync_breeding_exposure,
     choose_rotating_sire, compute_calf_type, compute_dam_candidate_sires,
-    generate_temp_id, log_location_change_seen_check,
+    generate_temp_id, log_location_change_seen_check, weaning_grade_required,
 )
 from app.models import (
     Animal, animal_sort_key, AnimalType, BreedingGroup, BullEPD, CALVING_EASE_CHOICES, CalfRecord,
@@ -22,6 +22,7 @@ from app.models import (
     Location, RENTAL_ACTIVE, RENTAL_BOOKED, SemenTest, SEX_FEMALE, SEX_MALE, WeightRecord,
 )
 from app.pedigree import coefficient_of_inbreeding_pct
+from sqlalchemy.orm import joinedload, selectinload
 
 animals_bp = Blueprint("animals", __name__, url_prefix="/animals")
 
@@ -71,7 +72,14 @@ def list_animals():
     cripple = request.args.get("cripple") == "1"
     q = (request.args.get("q") or "").strip()
 
-    query = Animal.query
+    query = Animal.query.options(
+        joinedload(Animal.animal_type),
+        joinedload(Animal.location),
+        selectinload(Animal.last_seen_checks),
+        selectinload(Animal.health_records),
+        selectinload(Animal.semen_tests),
+        selectinload(Animal.calf_records_as_dam).joinedload(CalfRecord.calf_animal),
+    )
     if current_only:
         query = query.filter_by(is_active=True)
     else:
@@ -239,8 +247,16 @@ def edit_animal(animal_id):
             animal.birth_date = form.birth_date.data
             animal.birth_weight = form.birth_weight.data
             new_location_id = form.location_id.data or None
-            log_location_change_seen_check(animal, new_location_id, current_user.id)
-            animal.location_id = new_location_id
+            if weaning_grade_required(animal, new_location_id):
+                flash(
+                    f"{animal.display_id} is still with its dam - record a weaning grade on its "
+                    "own page before moving it to a different location. The rest of these changes "
+                    "were saved; the location was not changed.",
+                    "warning",
+                )
+            else:
+                log_location_change_seen_check(animal, new_location_id, current_user.id)
+                animal.location_id = new_location_id
             animal.birth_location_id = form.birth_location_id.data or None
             animal.sire_id = form.sire_id.data or None
             animal.dam_id = form.dam_id.data or None
@@ -376,11 +392,25 @@ def bulk_action():
         if not location:
             flash("Pick a location to move the selected animals to.", "warning")
         else:
+            selected_ids = {a.id for a in animals}
+            blocked, moved = [], []
             for a in animals:
+                dam_also_moving = bool(a.calf_record and a.calf_record.dam_id in selected_ids)
+                if weaning_grade_required(a, location.id, dam_also_moving=dam_also_moving):
+                    blocked.append(a.display_id)
+                    continue
                 log_location_change_seen_check(a, location.id, current_user.id, notes="Seen - moved via bulk action.")
                 a.location_id = location.id
+                moved.append(a)
             db.session.commit()
-            flash(f"Moved {len(animals)} animal(s) to {location.display_name}.", "success")
+            if moved:
+                flash(f"Moved {len(moved)} animal(s) to {location.display_name}.", "success")
+            if blocked:
+                flash(
+                    f"Skipped {len(blocked)} calf(s) still with their dam - record a weaning grade "
+                    f"first (on each calf's own page): {', '.join(blocked)}.",
+                    "warning",
+                )
 
     elif action == "vaccinate":
         description = request.form.get("description", "").strip()
@@ -531,7 +561,17 @@ def import_csv():
 @login_required
 def list_cows():
     cows = [
-        a for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_FEMALE).all(), key=animal_sort_key)
+        a for a in sorted(
+            Animal.query.filter_by(is_active=True, sex=SEX_FEMALE)
+            .options(
+                joinedload(Animal.animal_type),
+                joinedload(Animal.location),
+                selectinload(Animal.calf_records_as_dam).joinedload(CalfRecord.calf_animal),
+                selectinload(Animal.exposure_records),
+            )
+            .all(),
+            key=animal_sort_key,
+        )
         if a.animal_type and ("Cow" in a.animal_type.name or "Heifer" in a.animal_type.name)
     ]
     return render_template("animals/cows_list.html", cows=cows)
@@ -772,7 +812,21 @@ def confirm_bred(exposure_id):
 def list_bulls():
     low_bw = request.args.get("low_bw") == "1"
     cripple = request.args.get("cripple") == "1"
-    bulls = [a for a in sorted(Animal.query.filter_by(is_active=True, sex=SEX_MALE).all(), key=animal_sort_key) if a.is_bull]
+    bulls = [
+        a for a in sorted(
+            Animal.query.filter_by(is_active=True, sex=SEX_MALE)
+            .options(
+                joinedload(Animal.animal_type),
+                joinedload(Animal.location),
+                joinedload(Animal.epd),
+                selectinload(Animal.semen_tests),
+                selectinload(Animal.rentals),
+            )
+            .all(),
+            key=animal_sort_key,
+        )
+        if a.is_bull
+    ]
     if low_bw:
         bulls = [b for b in bulls if b.is_low_birth_weight_candidate]
     if cripple:
