@@ -618,6 +618,10 @@ function followupDescription(stops, task, day) {
   return `Stops:\n${stops.map((x) => `• ${x}`).join('\n')}\n\nLast updated from "${task.title}" on ${day}.`;
 }
 
+// Stops are matched ignoring capitals and extra spaces, so "Behind the barn"
+// and "Behind the Barn" are the same stop on a to-do.
+const sameStop = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
 async function openTodoFor(env, action) {
   return env.DB.prepare(
     "SELECT id, followup_stops, followup_done FROM tasks WHERE status = 'open' AND followup_key = ? COLLATE NOCASE ORDER BY id DESC LIMIT 1"
@@ -631,7 +635,7 @@ async function addStopToTodo(env, user, task, rawAction, rawStop, day) {
   const stop = (rawStop || 'General').slice(0, 80);
   const open = await openTodoFor(env, action);
   const before = open ? parseStops(open.followup_stops) : [];
-  if (before.includes(stop)) return `${stop} is already on “${action}”.`;
+  if (before.some((x) => sameStop(x, stop))) return `${stop} is already on “${action}”.`;
   const stops = [...before, stop];
   const title = followupTitle(action, stops);
   if (open) {
@@ -653,9 +657,9 @@ async function removeStopFromTodo(env, task, rawAction, rawStop, day) {
   const stop = (rawStop || 'General').slice(0, 80);
   const open = await openTodoFor(env, action);
   const before = open ? parseStops(open.followup_stops) : [];
-  if (!before.includes(stop)) return '';
-  if (parseStops(open.followup_done).includes(stop)) return `${stop} was already done on “${action}”, so it stays there.`;
-  const stops = before.filter((x) => x !== stop);
+  if (!before.some((x) => sameStop(x, stop))) return '';
+  if (parseStops(open.followup_done).some((x) => sameStop(x, stop))) return `${stop} was already done on “${action}”, so it stays there.`;
+  const stops = before.filter((x) => !sameStop(x, stop));
   if (!stops.length) {
     await env.DB.prepare("UPDATE tasks SET status = 'archived', updated_at = ? WHERE id = ?").bind(nowIso(), open.id).run();
     return `Removed “${action}” (no stops left).`;
