@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Render__query_render_postgres",
+      "mcp__Render__list_logs",
+      "mcp__Render__get_deploy",
+      "mcp__Render__list_deploys"
+    ]
+  }
+}
