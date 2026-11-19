@@ -622,6 +622,16 @@ function followupDescription(stops, task, day) {
 // and "Behind the Barn" are the same stop on a to-do.
 const sameStop = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
+// Hay can't wait; mineral and liquid feed can. Anything else stays high.
+const supplyPriority = (action) => (/mineral|liquid/i.test(action) ? 'low' : 'high');
+
+// Hay to-dos carry the "Feeding Hay" guide (how many bales where), if there is one.
+async function supplyGuideId(env, action) {
+  if (!/hay/i.test(action)) return null;
+  const g = await env.DB.prepare("SELECT id FROM guides WHERE title = 'Feeding Hay' COLLATE NOCASE AND archived = 0").first();
+  return g ? g.id : null;
+}
+
 async function openTodoFor(env, action) {
   return env.DB.prepare(
     "SELECT id, followup_stops, followup_done FROM tasks WHERE status = 'open' AND followup_key = ? COLLATE NOCASE ORDER BY id DESC LIMIT 1"
@@ -643,9 +653,10 @@ async function addStopToTodo(env, user, task, rawAction, rawStop, day) {
       .bind(title, followupDescription(stops, task, day), JSON.stringify(stops), nowIso(), open.id).run();
   } else {
     await env.DB.prepare(
-      `INSERT INTO tasks (title, description, priority, due_date, created_by, followup_key, followup_stops)
-       VALUES (?, ?, 'high', NULL, ?, ?, ?)`
-    ).bind(title, followupDescription(stops, task, day), user.id, action, JSON.stringify(stops)).run();
+      `INSERT INTO tasks (title, description, priority, due_date, created_by, followup_key, followup_stops, guide_id)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`
+    ).bind(title, followupDescription(stops, task, day), supplyPriority(action), user.id, action, JSON.stringify(stops),
+      await supplyGuideId(env, action)).run();
   }
   return `Added ${stop} to “${action}”.`;
 }
