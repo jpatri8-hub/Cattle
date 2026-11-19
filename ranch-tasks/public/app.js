@@ -765,7 +765,7 @@ async function viewHandTaskForm(id) {
       <div class="field"><label>Estimated time (minutes)</label>
         <input type="number" name="est_minutes" min="0" inputmode="numeric" value="${esc(t.est_minutes ?? '')}"></div>
       ${id ? '<button class="primary big" type="submit" value="save">Save</button>'
-        : `<div class="stack"><button class="big" type="submit" value="save">Save</button>
+        : `<div class="stack"><button class="primary big" type="submit" value="save">Save</button>
             <button class="primary big" type="submit" value="done">✓ Save &amp; mark complete</button></div>`}
     </form>`;
   const form = $('#handTaskForm');
