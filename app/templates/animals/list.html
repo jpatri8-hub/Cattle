@@ -44,7 +44,7 @@
   </div>
   <div class="col-auto form-check pt-2">
     <input type="checkbox" class="form-check-input" name="flagged" value="1" id="flagged" {% if flagged %}checked{% endif %} onchange="this.form.submit()">
-    <label class="form-check-label" for="flagged">Not seen 4+ months</label>
+    <label class="form-check-label" for="flagged">Not seen 4+ months / flagged</label>
   </div>
   <div class="col-auto form-check pt-2">
     <input type="checkbox" class="form-check-input" name="sale_bulls" value="1" id="saleBulls" {% if sale_bulls %}checked{% endif %} onchange="this.form.submit()">
@@ -92,7 +92,7 @@
         {% for a in group_animals %}
         <tr class="{{ 'table-success' if a.is_bull and a.current_semen_status == 'Good' else 'table-danger' if a.is_bull and a.current_semen_status == 'Bad' else 'table-primary' if a.is_bull and a.current_semen_status == 'Retest' else 'table-warning' if a.not_seen_flagged else '' }}">
           <td><input type="checkbox" class="animal-check" name="animal_ids" value="{{ a.id }}" form="bulkForm"></td>
-          <td><a href="{{ url_for('animals.view_animal', animal_id=a.id, back=request.full_path) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">4+ mo</span>{% endif %}</td>
+          <td><a href="{{ url_for('animals.view_animal', animal_id=a.id, back=request.full_path) }}">{{ a.display_id }}</a>{% if a.name %} <small class="text-muted">{{ a.name }}</small>{% endif %}{% if a.not_seen_flagged %} <span class="badge bg-warning text-dark">{{ "Flagged" if a.needs_check else "4+ mo" }}</span>{% endif %}</td>
           <td>{% if a.sex == "female" %}{% if a.has_calf_at_side %}<span class="badge bg-success">Yes</span>{% else %}-{% endif %}{% else %}&mdash;{% endif %}</td>
           <td>{{ a.age_display }}</td>
           <td>{{ a.location.display_name if a.location else "-" }}</td>
@@ -151,6 +151,7 @@
       </div>
       <div class="col-auto"><input type="text" name="seen_notes" class="form-control form-control-sm" placeholder="Notes"></div>
       <div class="col-auto"><button type="submit" name="action" value="mark_seen" class="btn btn-sm btn-outline-info">Mark Seen</button></div>
+      <div class="col-auto"><button type="submit" name="action" value="mark_unseen" class="btn btn-sm btn-outline-warning">Flag for Next Check</button></div>
     </div>
     {% if current_user.is_owner %}
     <div class="row g-2 align-items-center mt-2">
@@ -165,7 +166,7 @@
       <div class="col-auto ms-auto"><button type="submit" name="action" value="sell" class="btn btn-sm btn-success">Sell Selected</button></div>
     </div>
     {% endif %}
-    <p class="text-muted small mt-2 mb-0">Check animals in the table above, then use the actions here. "Mark Seen" logs a health status of Healthy for each selected animal.{% if current_user.is_owner %} Semen tests only apply to selected animals that are bulls. "Create Breeding Group" only applies to selected females and skips the rest - use it to line up a group of cows/heifers before you've picked which bull to run with them, then evaluate candidates via the group's Available Bulls list.{% endif %}</p>
+    <p class="text-muted small mt-2 mb-0">Check animals in the table above, then use the actions here. "Mark Seen" logs a health status of Healthy for each selected animal. "Flag for Next Check" highlights selected animals as not seen (4+ mo badge) right away, even if they aren't actually overdue yet - the flag clears automatically the next time a check is logged for that animal.{% if current_user.is_owner %} Semen tests only apply to selected animals that are bulls. "Create Breeding Group" only applies to selected females and skips the rest - use it to line up a group of cows/heifers before you've picked which bull to run with them, then evaluate candidates via the group's Available Bulls list.{% endif %}</p>
   </div>
 </form>
 {% endblock %}

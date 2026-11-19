@@ -203,6 +203,10 @@ class Animal(db.Model):
     brand_number = db.Column(db.String(20), unique=True, index=True)
     is_sale_bull = db.Column(db.Boolean, default=False, nullable=False)
     is_cripple = db.Column(db.Boolean, default=False, nullable=False)
+    # Manually flagged for the next inventory check. Nullable (not NOT NULL)
+    # so db_sync.py's additive-only ADD COLUMN can pick this up automatically
+    # on an existing deployed table - None is treated the same as False.
+    needs_check = db.Column(db.Boolean, default=False)
 
     sire_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
     dam_id = db.Column(db.Integer, db.ForeignKey("animal.id"))
@@ -314,6 +318,8 @@ class Animal(db.Model):
     def not_seen_flagged(self):
         if not self.is_active:
             return False
+        if self.needs_check:
+            return True
         last = self.last_seen_date
         if not last:
             return True

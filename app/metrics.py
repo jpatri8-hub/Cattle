@@ -102,11 +102,18 @@ def cost_for_animal(animal, start=None, end=None):
     return own_cost + dam_credit - dam_debit
 
 
+def animal_sale_revenue(animal):
+    return sum(float(line.price) for line in animal.sale_lines)
+
+
+def animal_rental_revenue(animal):
+    if not animal.is_bull:
+        return 0.0
+    return sum(float(r.revenue) for r in animal.rentals)
+
+
 def animal_revenue(animal):
-    revenue = sum(float(line.price) for line in animal.sale_lines)
-    if animal.is_bull:
-        revenue += sum(float(r.revenue) for r in animal.rentals)
-    return revenue
+    return animal_sale_revenue(animal) + animal_rental_revenue(animal)
 
 
 def bull_lifetime_revenue(bull):
@@ -118,12 +125,14 @@ def net_margin_by_type():
     for t in AnimalType.query.order_by(AnimalType.name).all():
         animals = Animal.query.filter_by(animal_type_id=t.id).all()
         cost = sum(cost_for_animal(a) for a in animals)
-        revenue = sum(animal_revenue(a) for a in animals)
+        rental_revenue = sum(animal_rental_revenue(a) for a in animals)
+        revenue = sum(animal_sale_revenue(a) for a in animals) + rental_revenue
         results[t.name] = {
             "type_id": t.id,
             "count": len(animals),
             "cost": round(cost, 2),
             "revenue": round(revenue, 2),
+            "rental_revenue": round(rental_revenue, 2),
             "net": round(revenue - cost, 2),
         }
     return results

@@ -361,10 +361,21 @@ def add_last_seen(animal_id):
             location_id=form.location_id.data or None, health_status=form.health_status.data,
             notes=form.notes.data, seen_by_id=current_user.id,
         ))
+        animal.needs_check = False
         db.session.commit()
         flash("Inventory check logged.", "success")
     else:
         flash("Could not log check - review the form.", "danger")
+    return redirect(url_for("animals.view_animal", animal_id=animal.id))
+
+
+@animals_bp.route("/<int:animal_id>/mark-unseen", methods=["POST"])
+@login_required
+def mark_unseen(animal_id):
+    animal = Animal.query.get_or_404(animal_id)
+    animal.needs_check = True
+    db.session.commit()
+    flash(f"{animal.display_id} flagged for the next inventory check.", "success")
     return redirect(url_for("animals.view_animal", animal_id=animal.id))
 
 
@@ -439,8 +450,15 @@ def bulk_action():
                 location_id=location_id or a.location_id, health_status="Healthy",
                 notes=notes, seen_by_id=current_user.id,
             ))
+            a.needs_check = False
         db.session.commit()
         flash(f"Marked {len(animals)} animal(s) as seen.", "success")
+
+    elif action == "mark_unseen":
+        for a in animals:
+            a.needs_check = True
+        db.session.commit()
+        flash(f"Flagged {len(animals)} animal(s) for the next inventory check.", "success")
 
     elif action == "semen_test":
         test_date = request.form.get("semen_test_date") or date.today().isoformat()
@@ -646,6 +664,8 @@ def record_calf(cow_id):
             location_id=dam.location_id, health_status="Healthy",
             notes="Seen at calving.", seen_by_id=current_user.id,
         ))
+        calf.needs_check = False
+        dam.needs_check = False
         db.session.commit()
 
         msg = f"Calf recorded for {dam.display_id} ({calf_type.name}, temp ID {calf.temp_id})."
