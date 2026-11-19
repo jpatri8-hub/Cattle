@@ -12,7 +12,7 @@
 <form class="row g-2 mb-3" method="get">
   <div class="col-auto">
     <select name="status" class="form-select" onchange="this.form.submit()">
-      <option value="">All Statuses</option>
+      <option value="">All Statuses (excludes Cancelled)</option>
       {% for s in ["booked", "active", "returned", "cancelled"] %}
       <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s.capitalize() }}</option>
       {% endfor %}

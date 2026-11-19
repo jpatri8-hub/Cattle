@@ -28,6 +28,7 @@ def log_location_change_seen_check(animal, new_location_id, seen_by_id, date_rec
         location_id=new_location_id, health_status="Healthy",
         notes=notes or "Seen - location updated.", seen_by_id=seen_by_id,
     ))
+    animal.needs_check = False
 
 
 def weaning_grade_required(animal, new_location_id, dam_also_moving=False):

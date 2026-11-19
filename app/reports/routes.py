@@ -43,6 +43,7 @@ def overview():
         "count": sum(m["count"] for m in net_margin.values()),
         "cost": round(sum(m["cost"] for m in net_margin.values()), 2),
         "revenue": round(sum(m["revenue"] for m in net_margin.values()), 2),
+        "rental_revenue": round(sum(m["rental_revenue"] for m in net_margin.values()), 2),
         "net": round(sum(m["net"] for m in net_margin.values()), 2),
     }
     return render_template(

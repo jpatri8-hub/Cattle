@@ -46,6 +46,8 @@ def list_rentals():
     query = Rental.query
     if status_filter:
         query = query.filter_by(status=status_filter)
+    else:
+        query = query.filter(Rental.status != RENTAL_CANCELLED)
     rentals = query.order_by(Rental.start_date.asc()).all()
     return render_template("rentals/list.html", rentals=rentals, status_filter=status_filter)
 
@@ -196,6 +198,7 @@ def add_check(rental_id):
             recorded_by_id=current_user.id,
         )
         db.session.add(check)
+        rental.bull.needs_check = False
 
         if form.check_type.data == "pickup" and rental.status == RENTAL_BOOKED:
             rental.status = RENTAL_ACTIVE

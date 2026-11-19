@@ -48,7 +48,7 @@
   <p class="text-muted small">Cost = $/day rate x days on farm (using the rate history in effect on each day) plus purchase price, if recorded. A calf accrues no cost of its own until weaned - at that point 12 months of her dam's daily rate transfers from the dam's cost to the calf's as a one-time lump sum (a real, zero-sum transfer - the combined dam+calf total is unchanged), and the calf's own $/day cost starts accruing from the weaned date forward. Animals from the initial herd load with no known birth date (or, for calves, no weaning date) accrue cost starting {{ initial_load_cutover }} instead of staying near $0 forever.</p>
   <div class="table-responsive">
   <table class="table table-sm mb-0">
-    <thead><tr><th>Type</th><th>Count</th><th>Total Cost</th><th>Total Revenue</th><th>Net</th></tr></thead>
+    <thead><tr><th>Type</th><th>Count</th><th>Total Cost</th><th>Total Revenue</th><th>Rental Revenue</th><th>Net</th></tr></thead>
     <tbody>
       {% for type_name, m in net_margin.items() %}
       <tr>
@@ -56,6 +56,7 @@
         <td>{{ m.count }}</td>
         <td>{{ m.cost|usd }}</td>
         <td>{{ m.revenue|usd }}</td>
+        <td>{{ m.rental_revenue|usd if m.rental_revenue else "-" }}</td>
         <td class="{{ 'text-success' if m.net >= 0 else 'text-danger' }}">{{ m.net|usd }}</td>
       </tr>
       {% endfor %}
@@ -66,6 +67,7 @@
         <td>{{ net_margin_totals.count }}</td>
         <td>{{ net_margin_totals.cost|usd }}</td>
         <td>{{ net_margin_totals.revenue|usd }}</td>
+        <td>{{ net_margin_totals.rental_revenue|usd }}</td>
         <td class="{{ 'text-success' if net_margin_totals.net >= 0 else 'text-danger' }}">{{ net_margin_totals.net|usd }}</td>
       </tr>
     </tfoot>

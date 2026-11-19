@@ -9,10 +9,19 @@
       {% if animal.is_rentable_available %}<span class="badge bg-success">Available for Rent</span>
       {% else %}<span class="badge bg-warning text-dark">Unavailable: {{ animal.rental_unavailable_reason }}</span>{% endif %}
     {% endif %}
+    {% if animal.not_seen_flagged %}
+      <span class="badge bg-warning text-dark">{{ "Flagged for check" if animal.needs_check else "Not seen 4+ months" }}</span>
+    {% endif %}
   </h2>
   <div class="no-print">
     {% if current_user.is_owner %}
     <a href="{{ url_for('animals.edit_animal', animal_id=animal.id, back=request.args.get('back')) }}" class="btn btn-outline-primary">Edit</a>
+    {% endif %}
+    {% if animal.is_active and not animal.needs_check %}
+    <form method="post" action="{{ url_for('animals.mark_unseen', animal_id=animal.id) }}" class="d-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-warning" title="Flag this animal for the next inventory check, even though it isn't overdue yet.">Flag for Next Check</button>
+    </form>
     {% endif %}
     {% if current_user.is_owner and animal.is_active %}
     <a href="{{ url_for('sales.new_sale', animal_id=animal.id) }}" class="btn btn-outline-success">Sell</a>
